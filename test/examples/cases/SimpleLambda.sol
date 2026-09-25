@@ -8,10 +8,10 @@ function addWord(x : word, y : word) returns (word) {
 
 contract SimpleLambda{
   function f (z : word) public returns (word) {
-    let n = lam (x : word, y : word) {
+    let n = lambda (x : word, y : word) {
       return addWord(x,addWord(y,1));
     } ;
-    let m = lam (x : word) {
+    let m = lambda (x : word) {
       return addWord (z,x) ;
     } ;
     return m(n(1,0));

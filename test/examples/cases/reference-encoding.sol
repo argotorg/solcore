@@ -45,13 +45,13 @@ impl Typedef<memoryRef<a>, word> {
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 enum ref<a> { ref(a) }
 
 impl Assign<ref<a>, a> {
-    function assign(l:ref<a>, r:a) returns (()) {
+    function assign(l:ref<a>, r:a) returns (unit) {
         // builtin "stack store"
         return;
     }
@@ -59,7 +59,7 @@ impl Assign<ref<a>, a> {
 
 trait MemoryType<self> {
     function load(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 trait MemorySize<self> {
@@ -74,7 +74,7 @@ impl MemoryType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             mstore(ptr, value)
         }
@@ -85,7 +85,7 @@ impl MemoryType<uint> {
     function load(ptr:word) returns (uint) {
         return Typedef.abs(MemoryType.load(ptr));
     }
-    function store(ptr:word, value:uint) returns (()) {
+    function store(ptr:word, value:uint) returns (unit) {
         return MemoryType.store(ptr, Typedef.rep(value));
     }
 }
@@ -129,8 +129,8 @@ impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<Member
     }
 }
 
-impl MemorySize<()> {
-    function size(x:Proxy<()>) returns (word) {
+impl MemorySize<unit> {
+    function size(x:Proxy<unit>) returns (word) {
         return 0;
     }
 }
@@ -180,7 +180,7 @@ enum x_sel { x_sel }
 enum y_sel { y_sel }
 enum z_sel { z_sel }
 
-impl CStructField<StructField<S, x_sel>, word, ()> {}
+impl CStructField<StructField<S, x_sel>, word, unit> {}
 impl CStructField<StructField<S, y_sel>, uint, word> {}
 // BUG: This next one should really be the following, but that breaks weirdly:
 // (I get a patterson condition violation on an invoke instance for g)

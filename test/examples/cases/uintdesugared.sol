@@ -192,13 +192,13 @@ impl<a> Typedef<storageRef<a>, word> {
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 enum ref<a> { ref(a) }
 
 impl<a> Assign<ref<a>, a> {
-    function assign(l:ref<a>, r:a) returns (()) {
+    function assign(l:ref<a>, r:a) returns (unit) {
         // builtin "stack store"
         return;
     }
@@ -206,7 +206,7 @@ impl<a> Assign<ref<a>, a> {
 
 trait StorageType<self> {
     function sload(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 trait StorageSize<self> {
@@ -222,7 +222,7 @@ function sload_(x:word) returns (word) {
     return res;
   }
 
-function sstore_(a:word, v:word) returns (()) {
+function sstore_(a:word, v:word) returns (unit) {
     assembly { sstore(a,v) }
 }
 
@@ -234,7 +234,7 @@ impl StorageType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             sstore(ptr, value)
         }
@@ -246,7 +246,7 @@ impl StorageType<uint> {
         let syntaxValue1: uint = Typedef.abs(sload_(ptr));
         return syntaxValue1; // type annotation needed due to a typechecker bug
     }
-    function store(ptr:word, value:uint) returns (()) {
+    function store(ptr:word, value:uint) returns (unit) {
         return sstore_(ptr, Typedef.rep(value));
     }
 }
@@ -256,13 +256,13 @@ impl StorageType<address> {
         let syntaxValue2: address = Typedef.abs(sload_(ptr));
         return syntaxValue2; // type annotation needed due to a typechecker bug
     }
-    function store(ptr:word, value:address) returns (()) {
+    function store(ptr:word, value:address) returns (unit) {
         return sstore_(ptr, Typedef.rep(value));
     }
 }
 
 impl<a> Assign<storageRef<a>, a> where a: StorageType {
-    function assign(l:storageRef<a>, y:a) returns (()) {
+    function assign(l:storageRef<a>, y:a) returns (unit) {
         StorageType.store(Typedef.rep(l), y);
     }
 }
@@ -298,8 +298,8 @@ impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<Member
     }
 }
 
-impl StorageSize<()> {
-    function size(x:Proxy<()>) returns (word) {
+impl StorageSize<unit> {
+    function size(x:Proxy<unit>) returns (word) {
         return 0;
     }
 }
@@ -456,26 +456,26 @@ function rval<a, b>(x:a) returns (b)  where a: RValueMemberAccess<b> {
 
 enum UintCxt { UintCxt }
 enum reserved_sel { reserved_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, reserved_sel>, word, ()> {
+impl CStructField<StructField<ContractStorage<UintCxt>, reserved_sel>, word, unit> {
 }
 enum owner_sel { owner_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, owner_sel>, address, (word, ())> {
+impl CStructField<StructField<ContractStorage<UintCxt>, owner_sel>, address, (word, unit)> {
 }
 enum decimals_sel { decimals_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, decimals_sel>, uint, (word, (address, ()))> {
+impl CStructField<StructField<ContractStorage<UintCxt>, decimals_sel>, uint, (word, (address, unit))> {
 }
 enum totalSupply_sel { totalSupply_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, totalSupply_sel>, uint, (word, (address, (uint, ())))> {
+impl CStructField<StructField<ContractStorage<UintCxt>, totalSupply_sel>, uint, (word, (address, (uint, unit)))> {
 }
 enum balances_sel { balances_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, balances_sel>, mapping(address => uint), (word, (address, (uint, (uint, ()))))> {
+impl CStructField<StructField<ContractStorage<UintCxt>, balances_sel>, mapping(address => uint), (word, (address, (uint, (uint, unit))))> {
 }
 contract Uint {
-   function mint (amount : uint) public returns (()) {
+   function mint (amount : uint) public returns (unit) {
       Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)))), Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)))), amount));
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), totalSupply_sel)), Num.add(rval(MemberAccessProxy(ContractStorage(UintCxt), totalSupply_sel)), amount));
    }
-   function init () public returns (()) {
+   function init () public returns (unit) {
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)), address(81985529216486895));
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), decimals_sel)), Num.fromWord(18));
    }

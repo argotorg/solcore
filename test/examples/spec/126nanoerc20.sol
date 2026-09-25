@@ -12,7 +12,7 @@ function caller() returns (address) {
   return address(res);
 }
 
-function myrevert( msg: (word, word) ) returns (()) {
+function myrevert( msg: (word, word) ) returns (unit) {
   match (msg ) {
     case (str, len) {
        let str1 = str; let len1 = len;
@@ -20,16 +20,16 @@ function myrevert( msg: (word, word) ) returns (()) {
   } }
 }
 
-function myrequire(cond: bool, msg: (word, word) ) returns (()) {
+function myrequire(cond: bool, msg: (word, word) ) returns (unit) {
       if( not(cond) ) { myrevert(msg); }
 }
 
-function require1(cond: bool) returns (()) {
+function require1(cond: bool) returns (unit) {
     myrequire (cond, (0x72657175697265313a204641494c, 14) /* "require1: FAIL" */ );
 }
 
 
-function nop() returns (()) { return;}
+function nop() returns (unit) { return;}
 
 contract Uint {
   reserved : word;
@@ -39,7 +39,7 @@ contract Uint {
   totalSupply : uint256;
   balances : mapping(address => uint256);
 
-  function mint(amount:uint256) public returns (()) {
+  function mint(amount:uint256) public returns (unit) {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
@@ -58,17 +58,17 @@ contract Uint {
   }
 
 
-  function withdraw(src:address, amt:uint256) public returns (()) {
+  function withdraw(src:address, amt:uint256) public returns (unit) {
     let syntaxValue1: uint256 = Num.sub(balances[src], amt);
     balances[src] = syntaxValue1;
   }
   
-  function deposit(dst:address, amt:uint256) public returns (()) {
+  function deposit(dst:address, amt:uint256) public returns (unit) {
     let syntaxValue2: uint256 = Num.add(balances[dst], amt);
     balances[dst] = syntaxValue2;
   }
 
-  function init() public returns (()) {
+  function init() public returns (unit) {
     owner = address(0x123456789abcdef);
     msg_sender = caller();
     decimals = uint256(18);

@@ -10,7 +10,7 @@ pragma no-bounded-variable-condition ;
 // parser read `mstore(...) | <next-pattern> => ...` as a single bitwise-or
 // expression and break the `match`. The `|` *inside* the parentheses is a
 // genuine bitwise-or; the `|` that starts each arm is a separator.
-function emit(x: word) returns (()) {
+function emit(x: word) returns (unit) {
   match (x ) {
     case 0 { mstore(0, x | 1);
     } case 1 { mstore(0, x & 1);

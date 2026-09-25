@@ -1,7 +1,7 @@
 // Tests resolveMPTCsFromPreds in a "chain" scenario:
-// - f has phantom rep in its monotype (Foo -> ())
+// - f has phantom rep in its monotype (Foo -> unit)
 // - inside f, encode returns a value of type rep
-// - that value is passed to sink whose monotype is rep -> ()
+// - that value is passed to sink whose monotype is rep -> unit
 //
 // Without resolveMPTCsFromPreds the SM substitution lacks rep=word when
 // sink's specialisation name is being built, which would produce sink$rep
@@ -14,7 +14,7 @@ trait Encoder<self, rep> {
 }
 
 trait Sink<rep, r> {
-    function sink(x:rep) returns (());
+    function sink(x:rep) returns (unit);
 }
 
 impl Encoder<Foo, word> {
@@ -24,7 +24,7 @@ impl Encoder<Foo, word> {
 }
 
 impl Sink<word, word> {
-    function sink(x:word) returns (()) {
+    function sink(x:word) returns (unit) {
         return;
     }
 }
@@ -33,7 +33,7 @@ impl Sink<word, word> {
 // Inside the body, encode returns rep and sink consumes rep.
 // resolveMPTCsFromPreds must bind rep=word so that sink specialises
 // to sink$word (not sink$rep).
-function f<a, rep>(x:a) returns (())  where a: Encoder<rep>, rep: Sink<word> {
+function f<a, rep>(x:a) returns (unit)  where a: Encoder<rep>, rep: Sink<word> {
     let r : rep = Encoder.encode(x, 0);
     Sink.sink(r);
     return;

@@ -6,7 +6,7 @@ trait CtFun<t> {
 
 impl CtFun<word> {
     function ct(x : word) returns (function(word) returns (word)) {
-        return lam (y : word) -> word {
+        return lambda (y : word) -> word {
             return x;
         };
     }

@@ -11,11 +11,11 @@ contract ArrayOps {
   constructor() {}
 
   // NOTE: not named `add` -- that collides with the Yul builtin of the same name.
-  function pushVal(v : uint256) public returns (()) {
+  function pushVal(v : uint256) public returns (unit) {
     ArrayPush.push(xs, v);
   }
 
-  function popArr() public returns (()) {
+  function popArr() public returns (unit) {
     Array.pop(xs);
   }
 
@@ -27,7 +27,7 @@ contract ArrayOps {
     return xs[i];
   }
 
-  function grow(n : uint256) public returns (()) {
+  function grow(n : uint256) public returns (unit) {
     Array.setLength(xs, n);
   }
 }

@@ -54,7 +54,7 @@ impl SigString<address> { function sigStr(x:Proxy<address>) returns (string) { r
 impl SigString<bool> { function sigStr(x:Proxy<bool>) returns (string) { return "bool"; }}
 impl SigString<memory<string>> { function sigStr(x:Proxy<memory<string>>) returns (string) { return "string"; }}
 impl SigString<memory<bytes>> { function sigStr(x:Proxy<memory<bytes>>) returns (string) { return "bytes"; }}
-impl SigString<()> { function sigStr(x:Proxy<()>) returns (string) { return ""; } }
+impl SigString<unit> { function sigStr(x:Proxy<unit>) returns (string) { return ""; } }
 
 impl<a, b> SigString<(a, b)> where a: SigString, b: SigString {
   function sigStr(x:Proxy<(a, b)>) returns (string) {
@@ -121,12 +121,12 @@ impl<name, payability, args, rets, fn> Selector<Method<name, payability, args, r
 
 // Describes how to execute a given method / fallback
 trait ExecMethod<ty> {
-  function exec(x: ty) returns (());
+  function exec(x: ty) returns (unit);
 }
 
 // If fn matches the provided args/ret types, then we can execute any non-payable method
 impl<name, args, rets, fn> ExecMethod<Method<name, NonPayable, args, rets, fn>> where fn: invokable<args, rets>, args: ABIAttribs, rets: ABIAttribs, ABIDecoder<args, CalldataWordReader>: ABIDecode<args>, rets: ABIEncode {
-  function exec(m : Method<name, NonPayable, args, rets, fn>) returns (()) {
+  function exec(m : Method<name, NonPayable, args, rets, fn>) returns (unit) {
     match (m ) {
       case Method(pnm,ppayability,pargs,prets,fn) {
         // non-payable methods must reject any callvalue before running
@@ -139,7 +139,7 @@ impl<name, args, rets, fn> ExecMethod<Method<name, NonPayable, args, rets, fn>> 
 // If fn matches the provided args/ret types, then we can execute any payable method
 // payable methods skip the callvalue check entirely
 impl<name, args, rets, fn> ExecMethod<Method<name, Payable, args, rets, fn>> where fn: invokable<args, rets>, args: ABIAttribs, rets: ABIAttribs, ABIDecoder<args, CalldataWordReader>: ABIDecode<args>, rets: ABIEncode {
-  function exec(m : Method<name, Payable, args, rets, fn>) returns (()) {
+  function exec(m : Method<name, Payable, args, rets, fn>) returns (unit) {
     match (m ) {
       case Method(pnm,ppayability,pargs,prets,fn) {
         do_exec(pargs, prets, fn);
@@ -150,8 +150,8 @@ impl<name, args, rets, fn> ExecMethod<Method<name, Payable, args, rets, fn>> whe
 // Fallbacks have no ABI-decoded inputs or outputs, so the instance is
 // specialised to args = rets = () and bypasses the calldata length check
 // and ABI decode/encode entirely.
-impl<payability, fn> ExecMethod<Fallback<payability, (), (), fn>> where fn: invokable<(), ()>, payability: MethodLevelCallvalueCheck {
-  function exec(fb : Fallback<payability, (), (), fn>) returns (()) {
+impl<payability, fn> ExecMethod<Fallback<payability, unit, unit, fn>> where fn: invokable<unit, unit>, payability: MethodLevelCallvalueCheck {
+  function exec(fb : Fallback<payability, unit, unit, fn>) returns (unit) {
     match (fb ) {
       case Fallback(ppayability, pargs, prets, fn) {
         MethodLevelCallvalueCheck.checkCallvalue(@payability);
@@ -163,7 +163,7 @@ impl<payability, fn> ExecMethod<Fallback<payability, (), (), fn>> where fn: invo
   }
 }
 
-function do_exec<args, rets, fn>(pargs : Proxy<args>, prets : Proxy<rets>, fn : fn) returns (())  where fn: invokable<args, rets>, args: ABIAttribs, rets: ABIAttribs, ABIDecoder<args, CalldataWordReader>: ABIDecode<args>, rets: ABIEncode {
+function do_exec<args, rets, fn>(pargs : Proxy<args>, prets : Proxy<rets>, fn : fn) returns (unit)  where fn: invokable<args, rets>, args: ABIAttribs, rets: ABIAttribs, ABIDecoder<args, CalldataWordReader>: ABIDecode<args>, rets: ABIEncode {
     // check we have enough calldata for the head of args
     require(calldatasize() >= (ABIAttribs.headSize(pargs) + 4), Error(0x08638556)); // ABIInputTruncated()
 
@@ -188,12 +188,12 @@ function do_exec<args, rets, fn>(pargs : Proxy<args>, prets : Proxy<rets>, fn : 
 
 // For a given tuple of methods this executes the method specified by the first four bytes of calldata
 trait RunDispatch<ty> {
-  function go(methods : ty) returns (());
+  function go(methods : ty) returns (unit);
 }
 
 // We can dispatch to a single executable method with a known selector
 impl<name, payability, args, rets, fn> RunDispatch<Method<name, payability, args, rets, fn>> where Method<name, payability, args, rets, fn>: ExecMethod, Method<name, payability, args, rets, fn>: Selector {
-  function go(method : Method<name, payability, args, rets, fn>) returns (()) {
+  function go(method : Method<name, payability, args, rets, fn>) returns (unit) {
     match (selector_matches(@Method<name, payability, args, rets, fn>) ) {
       case true { ExecMethod.exec(method);
       } case false { return;
@@ -202,13 +202,13 @@ impl<name, payability, args, rets, fn> RunDispatch<Method<name, payability, args
 }
 
 // Base case: a contract with no methods has nothing to dispatch to
-impl RunDispatch<()> {
-  function go(methods : ()) returns (()) { }
+impl RunDispatch<unit> {
+  function go(methods : unit) returns (unit) { }
 }
 
 // Recursive instance
 impl<n, m> RunDispatch<(n, m)> where n: ExecMethod, n: Selector, m: RunDispatch {
-  function go(methods : (n, m)) returns (()) {
+  function go(methods : (n, m)) returns (unit) {
     match (methods ) {
       case (method_n, rest) {
         match (selector_matches(@n) ) {
@@ -233,16 +233,16 @@ enum Payable {}
 enum NonPayable {}
 
 trait MethodLevelCallvalueCheck<ty> {
-    function checkCallvalue(pty : Proxy<ty>) returns (());
+    function checkCallvalue(pty : Proxy<ty>) returns (unit);
 }
 
 // no callvalue check for Payable methods
 impl MethodLevelCallvalueCheck<Payable> {
-    function checkCallvalue(prx : Proxy<Payable>) returns (()) { }
+    function checkCallvalue(prx : Proxy<Payable>) returns (unit) { }
 }
 // NonPayable methods revert if passed value
 impl MethodLevelCallvalueCheck<NonPayable> {
-    function checkCallvalue(prx : Proxy<NonPayable>) returns (()) {
+    function checkCallvalue(prx : Proxy<NonPayable>) returns (unit) {
         let NonPayableReceivedValue = Error(0xb5988ea3);
         require(callvalue() == 0, NonPayableReceivedValue);
    }
@@ -252,12 +252,12 @@ impl MethodLevelCallvalueCheck<NonPayable> {
 
 // Describes how to execute a given contract
 trait RunContract<c> {
-  function exec(v : c) returns (());
+  function exec(v : c) returns (unit);
 }
 
 // If we have a dispatch for the contracts methods, and we know how to execute it's fallback, then we can define an entrypoint
 impl<methods, fb> RunContract<Contract<methods, fb>> where methods: RunDispatch, fb: ExecMethod {
-  function exec(c : Contract<methods, fb>) returns (()) {
+  function exec(c : Contract<methods, fb>) returns (unit) {
     match (c ) {
       case Contract(ms, fb) {
 
@@ -282,7 +282,7 @@ impl<methods, fb> RunContract<Contract<methods, fb>> where methods: RunDispatch,
 }
 
 // This is the default fallback used if none is defined.
-function fallback_default_implementation() returns (()) {
+function fallback_default_implementation() returns (unit) {
   let NoSelectorMatchedWithoutFallback = Error(0x4924aef0);
   revertWithError(NoSelectorMatchedWithoutFallback);
 }

@@ -39,7 +39,7 @@ contract C {
         assert(StorageSize.size(@Toggle) == 2);
     }
 
-    function setBare(v : uint256) public returns (()) {
+    function setBare(v : uint256) public returns (unit) {
         bare = toBool(v);
     }
 
@@ -47,7 +47,7 @@ contract C {
         return bare;
     }
 
-    function setFlags(a : uint256, b : uint256) public returns (()) {
+    function setFlags(a : uint256, b : uint256) public returns (unit) {
         flags = Flags(toBool(a), toBool(b));
     }
 
@@ -63,11 +63,11 @@ contract C {
         } }
     }
 
-    function turnOn(v : uint256) public returns (()) {
+    function turnOn(v : uint256) public returns (unit) {
         toggle = Toggle.On(toBool(v));
     }
 
-    function turnOff() public returns (()) {
+    function turnOff() public returns (unit) {
         toggle = Toggle.Off;
     }
 

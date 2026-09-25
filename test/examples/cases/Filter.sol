@@ -38,15 +38,15 @@ function list1 () returns (List<Word>) {
 }
 
 function foo0(y : Word) returns (List<Word>) {
-  return filter((lam (x){ return eq(x,y); }), list1());
+  return filter((lambda (x){ return eq(x,y); }), list1());
 }
 
 function foo1() returns (List<Word>) {
-  return filter((lam (x){ return eq(x,1); }), list1());
+  return filter((lambda (x){ return eq(x,1); }), list1());
 }
 
 function foo2(p : function(Word) returns (Bool), q : function(Word) returns (Bool)) returns (List<Word>) {
-  return filter(lam (x) { return and(p(x), q(x)) ; }
+  return filter(lambda (x) { return and(p(x), q(x)) ; }
                 , list1());
 }
 

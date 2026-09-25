@@ -12,8 +12,8 @@ impl Hash<word> {
     function hash(x : word) returns (word) { return x; }
 }
 
-impl Hash<()> {
-    function hash(x : ()) returns (word) { return 0; }
+impl Hash<unit> {
+    function hash(x : unit) returns (word) { return 0; }
 }
 
 impl<f, g> Hash<sum<f, g>> where f: Hash, g: Hash {

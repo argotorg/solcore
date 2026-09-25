@@ -9,7 +9,7 @@ contract Bug {
     }
 
     function makeClosure(e : word) public returns (word) {
-        let f = lam (x : word) {
+        let f = lambda (x : word) {
             return e + x;  // Uses Add.add typeclass method
         };
         return f(1);

@@ -11,7 +11,7 @@ impl Encoder<Foo, word> {
     }
 }
 
-function encodeAndDiscard<a, rep>(x:a) returns (())  where a: Encoder<rep> {
+function encodeAndDiscard<a, rep>(x:a) returns (unit)  where a: Encoder<rep> {
     let enc : rep = Encoder.encode(x, 0);
     return;
 }

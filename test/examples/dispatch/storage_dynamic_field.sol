@@ -14,13 +14,13 @@ contract C {
         assert(StorageSize.size(@Blob) == 2);
     }
 
-    function clear() public returns (()) {
+    function clear() public returns (unit) {
         blob = Blob.NoBlob;
     }
 
     // Stores the memory(bytes) payload into the ADT field (round-trips the
     // dynamic leaf through storage(bytes)).
-    function setBytes(b: memory<bytes>) public returns (()) {
+    function setBytes(b: memory<bytes>) public returns (unit) {
         blob = Blob.SomeBytes(b);
     }
 

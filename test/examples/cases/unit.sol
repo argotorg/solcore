@@ -1,19 +1,19 @@
 contract Unit {
-function one (x : ()) public returns (word) {
+function one (x : unit) public returns (word) {
   return 1;
 }
 
-function unitVal() public returns (()) {
+function unitVal() public returns (unit) {
   return;
 }
 
-function unitMatch (x : ()) public returns (word) {
+function unitMatch (x : unit) public returns (word) {
   match (x ) {
   case () { return 1;
   } }
 }
 
-function foo (x : word) public returns (()) {
+function foo (x : word) public returns (unit) {
   return;
 }
 
@@ -26,8 +26,8 @@ trait Def<a> {
   function def () returns (a) ;
 }
 
-impl Def<()> {
-  function def() returns (()) {
+impl Def<unit> {
+  function def() returns (unit) {
     return;
   }
 }

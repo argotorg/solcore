@@ -4,7 +4,7 @@ function fst<a, b>(p: (a, b)) returns (a) {
     } }
 }
 contract TestUnitMatch {
-  function main() public returns (()) {
+  function main() public returns (unit) {
     match (((), ())) {
      case x { return fst(x);
     } }

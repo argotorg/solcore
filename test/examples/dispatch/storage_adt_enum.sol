@@ -6,7 +6,7 @@ import * from std.StorageGeneric;
 // An enumeration with more than two constructors.
 //
 // The SOP representation is a RIGHT-NESTED sum, so `Color` becomes
-// `sum((), sum((), ()))` and the constructors are encoded as
+// `sum(unit, sum(unit, unit))` and the constructors are encoded as
 //
 //   Red   = inl(())            tag 0 at slot p
 //   Green = inr(inl(()))       tag 1 at slot p, tag 0 at slot p+1
@@ -20,7 +20,7 @@ import * from std.StorageGeneric;
 enum Color { Red, Green, Blue }
 
 // A three-constructor sum whose branches carry payloads of different widths.
-// rep = sum(uint256, sum((uint256, uint256), ())), so
+// rep = sum(uint256, sum((uint256, uint256), unit)), so
 //   size = 1 + max(1, 1 + max(2, 0)) = 4.
 enum Shape { Dot(uint256), Seg(uint256, uint256), Nothing }
 
@@ -37,16 +37,16 @@ contract C {
         assert(StorageSize.size(@Shape) == 4);
     }
 
-    function setRed() public returns (()) {
+    function setRed() public returns (unit) {
         color = Color.Red;
     }
 
     // inr(inl(())) — the nested-tag branch.
-    function setGreen() public returns (()) {
+    function setGreen() public returns (unit) {
         color = Color.Green;
     }
 
-    function setBlue() public returns (()) {
+    function setBlue() public returns (unit) {
         color = Color.Blue;
     }
 
@@ -58,16 +58,16 @@ contract C {
         } }
     }
 
-    function setDot(a : uint256) public returns (()) {
+    function setDot(a : uint256) public returns (unit) {
         shape = Shape.Dot(a);
     }
 
     // inr(inl(...)) again, this time with a product payload.
-    function setSeg(a : uint256, b : uint256) public returns (()) {
+    function setSeg(a : uint256, b : uint256) public returns (unit) {
         shape = Shape.Seg(a, b);
     }
 
-    function setNothing() public returns (()) {
+    function setNothing() public returns (unit) {
         shape = Shape.Nothing;
     }
 

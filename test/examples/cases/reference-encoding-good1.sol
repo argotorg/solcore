@@ -45,13 +45,13 @@ impl<a> Typedef<memoryRef<a>, word> {
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 enum ref<a> { ref(a) }
 
 impl<a> Assign<ref<a>, a> {
-    function assign(l:ref<a>, r:a) returns (()) {
+    function assign(l:ref<a>, r:a) returns (unit) {
         // builtin "stack store"
         return;
     }
@@ -59,7 +59,7 @@ impl<a> Assign<ref<a>, a> {
 
 trait MemoryType<self> {
     function load(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 trait MemorySize<self> {
@@ -74,7 +74,7 @@ impl MemoryType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             mstore(ptr, value)
         }
@@ -85,13 +85,13 @@ impl MemoryType<uint> {
     function load(ptr:word) returns (uint) {
         return Typedef.abs(MemoryType.load(ptr));
     }
-    function store(ptr:word, value:uint) returns (()) {
+    function store(ptr:word, value:uint) returns (unit) {
         return MemoryType.store(ptr, Typedef.rep(value));
     }
 }
 
 impl<a> Assign<memoryRef<a>, a> where a: MemoryType {
-    function assign(l:memoryRef<a>, y:a) returns (()) {
+    function assign(l:memoryRef<a>, y:a) returns (unit) {
         MemoryType.store(Typedef.rep(l), y);
     }
 }
@@ -137,8 +137,8 @@ impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<Member
     }
 }
 
-impl MemorySize<()> {
-    function size(x:Proxy<()>) returns (word) {
+impl MemorySize<unit> {
+    function size(x:Proxy<unit>) returns (word) {
         return 0;
     }
 }
@@ -188,7 +188,7 @@ enum x_sel { x_sel }
 enum y_sel { y_sel }
 enum z_sel { z_sel }
 
-impl CStructField<StructField<S, x_sel>, word, ()> {}
+impl CStructField<StructField<S, x_sel>, word, unit> {}
 impl CStructField<StructField<S, y_sel>, uint, word> {}
 // BUG: This next one should really be the following, but that breaks weirdly:
 // (I get a patterson condition violation on an invoke instance for g)
@@ -197,7 +197,7 @@ impl CStructField<StructField<S, y_sel>, uint, word> {}
 impl CStructField<StructField<S, z_sel>, word, word> {}
 
 
-function f() returns (()) {
+function f() returns (unit) {
     let x:memory<word>;
     let y:memory<word>;
     // x = y
@@ -212,7 +212,7 @@ function f() returns (()) {
      */
 }
 
-function g() returns (()) {
+function g() returns (unit) {
     let s:memory<S> = Typedef.abs(0x80);
     let y:word = 42;
     let z:uint = uint(42);
@@ -228,7 +228,7 @@ function g() returns (()) {
     Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(s, z_sel)), RValueMemberAccess.memberAccess(MemberAccessProxy(s, x_sel)));
 }
 contract C {
-    function main() public returns (()) {
+    function main() public returns (unit) {
         f();
         g();
     }

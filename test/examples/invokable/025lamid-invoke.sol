@@ -1,7 +1,7 @@
 /* Manual translation of:
 contract Id1 {
   function main() {
-    let nid = lam(x) {return x;};
+    let nid = lambda(x) {return x;};
     return nid(42);
   }
 }

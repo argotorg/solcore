@@ -64,13 +64,13 @@ impl Typedef<memoryRef<a>, word> {
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 enum ref<a> { ref(a) }
 
 impl Assign<ref<a>, a> {
-    function assign(l:ref<a>, r:a) returns (()) {
+    function assign(l:ref<a>, r:a) returns (unit) {
         // builtin "stack store"
         return;
     }
@@ -78,7 +78,7 @@ impl Assign<ref<a>, a> {
 
 trait MemoryType<self> {
     function load(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 trait MemorySize<self> {
@@ -106,7 +106,7 @@ impl MemoryType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             mstore(ptr, value)
         }
@@ -117,7 +117,7 @@ impl MemoryType<uint> {
     function load(ptr:word) returns (uint) {
         return Typedef.abs(mload_(ptr));
     }
-    function store(ptr:word, value:uint) returns (()) {
+    function store(ptr:word, value:uint) returns (unit) {
         return mstore_(ptr, Typedef.rep(value));
     }
 }
@@ -126,7 +126,7 @@ impl<a> MemoryType<memory<a>> {
     function load(ptr:word) returns (memory<a>) {
         return Typedef.abs(mload_(ptr));
     }
-    function store(ptr:word, value:memory<a>) returns (()) {
+    function store(ptr:word, value:memory<a>) returns (unit) {
         return mstore_(ptr, Typedef.rep(value));
     }
 }
@@ -169,8 +169,8 @@ impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<Member
     }
 }
 
-impl MemorySize<()> {
-    function size(x:Proxy<()>) returns (word) {
+impl MemorySize<unit> {
+    function size(x:Proxy<unit>) returns (word) {
         return 0;
     }
 }
@@ -243,15 +243,15 @@ enum flds_sel { flds_sel }
 
 // form:
 // instance StructField(S, f_sel):CStructField(ftype, preceding)) {}
-impl CStructField<StructField<S, fld1_sel>, uint, ()> {}
+impl CStructField<StructField<S, fld1_sel>, uint, unit> {}
 impl CStructField<StructField<S, fld2_sel>, word, uint> {}
 impl CStructField<StructField<S, fld3_sel>, word, (uint, word)> {}
 
-impl CStructField<StructField<W, flds_sel>, memory<S>, ()> {}
+impl CStructField<StructField<W, flds_sel>, memory<S>, unit> {}
 
 function makeS() returns (memory<S>) {
     let s:memory<S> = Typedef.abs(0x80);
-    let fld1_map : MemberAccessProxy<memory<S>, fld1_sel, ()> = MemberAccessProxy(s, fld1_sel);
+    let fld1_map : MemberAccessProxy<memory<S>, fld1_sel, unit> = MemberAccessProxy(s, fld1_sel);
     let fld2_map : MemberAccessProxy<memory<S>, fld2_sel, uint> = MemberAccessProxy(s, fld2_sel);
     let syntaxValue2: MemberAccessProxy<memory<S>, fld3_sel, (uint, word)> = MemberAccessProxy(s, fld3_sel);
     let fld3_map = syntaxValue2;
@@ -278,7 +278,7 @@ function makeS() returns (memory<S>) {
 
 function readS(s:memory<S>) returns (word) {
     let s:memory<S> = Typedef.abs(0x80);
-    let fld1_map : MemberAccessProxy<memory<S>, fld1_sel, ()> = MemberAccessProxy(s, fld1_sel);
+    let fld1_map : MemberAccessProxy<memory<S>, fld1_sel, unit> = MemberAccessProxy(s, fld1_sel);
     let fld2_map : MemberAccessProxy<memory<S>, fld2_sel, uint> = MemberAccessProxy(s, fld2_sel);
     let syntaxValue3: MemberAccessProxy<memory<S>, fld3_sel, (uint, word)> = MemberAccessProxy(s, fld3_sel);
     let fld3_map = syntaxValue3;
@@ -310,7 +310,7 @@ function rwS() returns (word) {
 
 function makeW(s:memory<S>) returns (memory<W>) {
     let w:memory<W> = Typedef.abs(0xe0);
-    let flds_map : MemberAccessProxy<memory<W>, flds_sel, ()> = MemberAccessProxy(w, flds_sel);
+    let flds_map : MemberAccessProxy<memory<W>, flds_sel, unit> = MemberAccessProxy(w, flds_sel);
 
     // w.flds = s
     let flds_lval : memoryRef<memory<S>>
@@ -321,7 +321,7 @@ function makeW(s:memory<S>) returns (memory<W>) {
 }
 
 function readW(w:memory<W>) returns (memory<S>) {
-    let flds_map : MemberAccessProxy<memory<W>, flds_sel, ()> = MemberAccessProxy(w, flds_sel);
+    let flds_map : MemberAccessProxy<memory<W>, flds_sel, unit> = MemberAccessProxy(w, flds_sel);
     return RValueMemberAccess.memberAccess(flds_map);
 }
 

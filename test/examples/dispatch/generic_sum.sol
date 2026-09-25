@@ -10,14 +10,14 @@ enum Option<a> { None, Some(a) }
 
 // Only requirement: Generic instance using the primitive sum type.
 // rep = sum((), uint256): inl(()) = None, inr(v) = Some(v)
-impl Generic<Option<uint256>, sum<(), uint256>> {
-    function from(x : Option<uint256>) returns (sum<(), uint256>) {
+impl Generic<Option<uint256>, sum<unit, uint256>> {
+    function from(x : Option<uint256>) returns (sum<unit, uint256>) {
         match (x ) {
         case Option.None    { return inl(());
         } case Option.Some(v) { return inr(v);
         } }
     }
-    function to(r : sum<(), uint256>) returns (Option<uint256>) {
+    function to(r : sum<unit, uint256>) returns (Option<uint256>) {
         match (r ) {
         case inl(_) { return Option.None;
         } case inr(v) { return Option.Some(v);

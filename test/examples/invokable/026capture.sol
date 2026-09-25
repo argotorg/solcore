@@ -2,7 +2,7 @@
 contract Id1 {
   function main() {
     let y = 42;
-    let nid = lam(x) {return addW(x,y);};
+    let nid = lambda(x) {return addW(x,y);};
     return nid(17);
   }
 }

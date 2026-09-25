@@ -64,14 +64,14 @@ impl Typedef<storageRef<a>, word> {
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 /*
 data ref(a) = ref(a);
 
 instance ref(a):Assign(a) {
-    function assign(l:ref(a), r:a) -> () {
+    function assign(l:ref(a), r:a) -> unit {
         // builtin "stack store"
         return ();
     }
@@ -80,7 +80,7 @@ instance ref(a):Assign(a) {
 
 trait StorageType<self> {
     function sload(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 trait StorageSize<self> {
@@ -108,7 +108,7 @@ impl StorageType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             sstore(ptr, value)
         }
@@ -120,7 +120,7 @@ impl StorageType<uint> {
         let syntaxValue1: uint = Typedef.abs(sload_(ptr));
         return syntaxValue1; // type annotation needed due to a typechecker bug
     }
-    function store(ptr:word, value:uint) returns (()) {
+    function store(ptr:word, value:uint) returns (unit) {
         return sstore_(ptr, Typedef.rep(value));
     }
 }
@@ -163,8 +163,8 @@ impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<Member
     }
 }
 
-impl StorageSize<()> {
-    function size(x:Proxy<()>) returns (word) {
+impl StorageSize<unit> {
+    function size(x:Proxy<unit>) returns (word) {
         return 0;
     }
 }
@@ -227,14 +227,14 @@ enum fld3_sel { fld3_sel }
 
 // form:
 // instance StructField(S, f_sel):CStructField(ftype, preceding)) {}
-impl CStructField<StructField<S, fld1_sel>, uint, ()> {}
+impl CStructField<StructField<S, fld1_sel>, uint, unit> {}
 impl CStructField<StructField<S, fld2_sel>, word, uint> {}
 impl CStructField<StructField<S, fld3_sel>, word, (uint, word)> {}
 
 
 function g() returns (word) {
     let s:storage<S> = Typedef.abs(0x80);
-    let fld1_map : MemberAccessProxy<storage<S>, fld1_sel, ()> = MemberAccessProxy(s, fld1_sel);
+    let fld1_map : MemberAccessProxy<storage<S>, fld1_sel, unit> = MemberAccessProxy(s, fld1_sel);
     let fld2_map : MemberAccessProxy<storage<S>, fld2_sel, uint> = MemberAccessProxy(s, fld2_sel);
     let syntaxValue3: MemberAccessProxy<storage<S>, fld3_sel, (uint, word)> = MemberAccessProxy(s, fld3_sel);
     let fld3_map = syntaxValue3;

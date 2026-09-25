@@ -192,17 +192,17 @@ impl<a> Typedef<storageRef<a>, word> {
    }
 }
 trait Assign<lhs, rhs> {
-   function assign (l : lhs, r : rhs) returns (());
+   function assign (l : lhs, r : rhs) returns (unit);
 }
 enum ref<a> { ref(a) }
 impl<a> Assign<ref<a>, a> {
-   function assign (l : ref<a>, r : a) returns (()) {
+   function assign (l : ref<a>, r : a) returns (unit) {
       return;
    }
 }
 trait StorageType<self> {
    function sload (ptr : word) returns (self);
-   function store (ptr : word, value : self) returns (());
+   function store (ptr : word, value : self) returns (unit);
 }
 trait StorageSize<self> {
    function size (x : Proxy<self>) returns (word);
@@ -224,7 +224,7 @@ impl StorageType<word> {
                }
       return r;
    }
-   function store (ptr : word, value : word) returns (()) {
+   function store (ptr : word, value : word) returns (unit) {
       assembly { sstore(ptr, value)
                }
    }
@@ -234,7 +234,7 @@ impl StorageType<uint> {
       let syntaxValue1: uint = Typedef.abs(sload_(ptr));
       return syntaxValue1;
    }
-   function store (ptr : word, value : uint) returns (()) {
+   function store (ptr : word, value : uint) returns (unit) {
       return sstore_(ptr, Typedef.rep(value));
    }
 }
@@ -243,12 +243,12 @@ impl StorageType<address> {
       let syntaxValue2: address = Typedef.abs(sload_(ptr));
       return syntaxValue2;
    }
-   function store (ptr : word, value : address) returns (()) {
+   function store (ptr : word, value : address) returns (unit) {
       return sstore_(ptr, Typedef.rep(value));
    }
 }
 impl<a> Assign<storageRef<a>, a> where a: StorageType {
-   function assign (l : storageRef<a>, y : a) returns (()) {
+   function assign (l : storageRef<a>, y : a) returns (unit) {
       StorageType.store(Typedef.rep(l), y);
    }
 }
@@ -277,8 +277,8 @@ impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<Member
       return storageRef(ptr);
    }
 }
-impl StorageSize<()> {
-   function size (x : Proxy<()>) returns (word) {
+impl StorageSize<unit> {
+   function size (x : Proxy<unit>) returns (word) {
       return 0;
    }
 }
@@ -385,27 +385,27 @@ function require1 (cond : Bool) {
       return;
    } }
 }
-function nop () returns (()) {
+function nop () returns (unit) {
    return;
 }
 enum UintCxt { UintCxt }
 enum reserved_sel { reserved_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, reserved_sel>, word, ()> {
+impl CStructField<StructField<ContractStorage<UintCxt>, reserved_sel>, word, unit> {
 }
 enum msg_sender_sel { msg_sender_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, msg_sender_sel>, address, (word, ())> {
+impl CStructField<StructField<ContractStorage<UintCxt>, msg_sender_sel>, address, (word, unit)> {
 }
 enum owner_sel { owner_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, owner_sel>, address, (word, (address, ()))> {
+impl CStructField<StructField<ContractStorage<UintCxt>, owner_sel>, address, (word, (address, unit))> {
 }
 enum decimals_sel { decimals_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, decimals_sel>, uint, (word, (address, (address, ())))> {
+impl CStructField<StructField<ContractStorage<UintCxt>, decimals_sel>, uint, (word, (address, (address, unit)))> {
 }
 enum totalSupply_sel { totalSupply_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, totalSupply_sel>, uint, (word, (address, (address, (uint, ()))))> {
+impl CStructField<StructField<ContractStorage<UintCxt>, totalSupply_sel>, uint, (word, (address, (address, (uint, unit))))> {
 }
 enum balances_sel { balances_sel }
-impl CStructField<StructField<ContractStorage<UintCxt>, balances_sel>, mapping(address => uint), (word, (address, (address, (uint, (uint, ())))))> {
+impl CStructField<StructField<ContractStorage<UintCxt>, balances_sel>, mapping(address => uint), (word, (address, (address, (uint, (uint, unit)))))> {
 }
 contract Uint {
    function mint (amount : uint) public {
@@ -419,10 +419,10 @@ contract Uint {
       return Bool.True;
    }
    function withdraw (src : address, amt : uint) public {
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), (lam (syntaxValue: uint) -> uint { return syntaxValue; })(Num.sub(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), amt)));
+      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), (lambda (syntaxValue: uint) -> uint { return syntaxValue; })(Num.sub(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), src)), amt)));
    }
    function deposit (dst : address, amt : uint) public {
-      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), (lam (syntaxValue: uint) -> uint { return syntaxValue; })(Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), amt)));
+      Assign.assign(LValueMemberAccess.memberAccess(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), (lambda (syntaxValue: uint) -> uint { return syntaxValue; })(Num.add(rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), dst)), amt)));
    }
    function init () public {
       Assign.assign(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)), address(81985529216486895));
@@ -436,7 +436,7 @@ contract Uint {
       let amt = uint(1) ;
       let src : address = rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)) ;
       transferFrom(rval(MemberAccessProxy(ContractStorage(UintCxt), owner_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel)), uint(42));
-      let syntaxValue4: () = require1(Bool.True);
+      let syntaxValue4: unit = require1(Bool.True);
       syntaxValue4;
       let syntaxValue5: uint = rval(IndexAccessProxy(LValueMemberAccess.memberAccess(MemberAccessProxy(ContractStorage(UintCxt), balances_sel)), rval(MemberAccessProxy(ContractStorage(UintCxt), msg_sender_sel))));
       return syntaxValue5;

@@ -5,7 +5,7 @@ contract Id1 {
 
 
   function main() public {
-    let nid = lam(x) {return x;};
+    let nid = lambda(x) {return x;};
     return nid(42);
   }
 }

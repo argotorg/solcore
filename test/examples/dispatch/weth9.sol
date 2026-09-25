@@ -3,7 +3,7 @@ import {caller as caller_, callvalue as callvalue_, selfbalance, gas, call} from
 import * from std.dispatch;
 
 // Forward `wad` wei to `dst` via a zero-data CALL and revert on failure.
-function sendValue(dst: address, wad: uint256) returns (()) {
+function sendValue(dst: address, wad: uint256) returns (unit) {
     let ret = call(gas(), Typedef.rep(dst), Typedef.rep(wad), 0, 0, 0, 0);
     require(ret != 0, Error(0x90b8ec18)); // TransferFailed()
 }
@@ -26,12 +26,12 @@ contract WETH9 {
 
     // --- ETH <-> WETH ---
 
-    function deposit() public payable returns (()) {
+    function deposit() public payable returns (unit) {
         let sender = caller();
         balances[sender] = balances[sender] + callvalue();
     }
 
-    function withdraw(wad: uint256) public returns (()) {
+    function withdraw(wad: uint256) public returns (unit) {
         let sender = caller();
         require(balances[sender] >= wad, Error(0xf4d678b8)); // InsufficientBalance()
         balances[sender] = balances[sender] - wad;
@@ -67,7 +67,7 @@ contract WETH9 {
         let sender = caller();
         require(balances[src] >= wad, Error(0xf4d678b8)); // InsufficientBalance()
 
-        if (src != sender && allowance[src][sender] != ((lam (syntaxValue: uint256) -> uint256 { return syntaxValue; })(maxVal()))) {
+        if (src != sender && allowance[src][sender] != ((lambda (syntaxValue: uint256) -> uint256 { return syntaxValue; })(maxVal()))) {
             require(allowance[src][sender] >= wad, Error(0x13be252b)); // InsufficientAllowance()
             allowance[src][sender] -= wad;
         }

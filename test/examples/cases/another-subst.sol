@@ -1,7 +1,7 @@
-trait Foo<a> {function foo(x:a) returns (()); }
+trait Foo<a> {function foo(x:a) returns (unit); }
 
 impl<a, b> Foo<(a, b)> where a: Foo, b: Foo {
-  function foo( p : (a, b) ) returns (()) {
+  function foo( p : (a, b) ) returns (unit) {
     match (p ) {
       case (pa, pb) { Foo.foo(pa); Foo.foo(pb);
     } }

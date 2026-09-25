@@ -33,7 +33,7 @@ contract C {
     }
 
     // ADT as a parameter: decoded from calldata, then written to storage.
-    function setOpt(o : Option<uint256>) public returns (()) {
+    function setOpt(o : Option<uint256>) public returns (unit) {
         stored = o;
     }
 

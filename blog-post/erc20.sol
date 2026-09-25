@@ -8,7 +8,7 @@ function caller() returns (address) {
   return address(res);
 }
 
-function myrevert(msg: word) returns (()) {
+function myrevert(msg: word) returns (unit) {
   assembly { mstore(0, msg) revert(0, 32) }
 }
 
@@ -24,7 +24,7 @@ contract MiniERC20 {
   balances : mapping(address => uint);
   allowance : mapping(address => mapping(address => uint));
 
-  function mint(amount:uint) returns (()) {
+  function mint(amount:uint) returns (unit) {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
@@ -35,7 +35,7 @@ contract MiniERC20 {
            , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
 	         );
 
-    if (src != msg_sender && allowance[src][msg_sender] != ((lam (syntaxValue: uint) -> uint { return syntaxValue; })(Num.maxVal()))) {
+    if (src != msg_sender && allowance[src][msg_sender] != ((lambda (syntaxValue: uint) -> uint { return syntaxValue; })(Num.maxVal()))) {
        require( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
 	            , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
 	            );
@@ -52,7 +52,7 @@ contract MiniERC20 {
     return true;
   }
 
-  function init() returns (()) {
+  function init() returns (unit) {
     owner = address(0x123456789abcdef);
     decimals = Num.fromWord(18);
   }

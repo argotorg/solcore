@@ -85,17 +85,17 @@ moduleTypeCheckTests =
       testCase "break and continue outside loops are rejected with locations" $ do
         breakResult <-
           typecheckSource
-            "function badBreak() returns (()) { break; }"
+            "function badBreak() returns (unit) { break; }"
         continueResult <-
           typecheckSource
-            "function badContinue() returns (()) { continue; }"
+            "function badContinue() returns (unit) { continue; }"
         assertLocatedLoopControlError "break outside loop" "break" breakResult
         assertLocatedLoopControlError "continue outside loop" "continue" continueResult,
       testCase "break and continue remain valid in loop bodies" $ do
         checked <-
           typecheckSource $
             unlines
-              [ "function validLoopControl(flag: bool) returns (()) {",
+              [ "function validLoopControl(flag: bool) returns (unit) {",
                 "  while (flag) {",
                 "    break;",
                 "  }",
@@ -110,9 +110,9 @@ moduleTypeCheckTests =
         checked <-
           typecheckSource $
             unlines
-              [ "function badLambdaBreak(flag: bool) returns (()) {",
+              [ "function badLambdaBreak(flag: bool) returns (unit) {",
                 "  while (flag) {",
-                "    let callback = lam() -> () { break; };",
+                "    let callback = lambda() -> unit { break; };",
                 "  }",
                 "  return;",
                 "}"

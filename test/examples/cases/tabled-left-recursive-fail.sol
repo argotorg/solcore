@@ -4,10 +4,10 @@ trait Loop<a> {}
 
 impl<a> Loop<a> where a: Loop {}
 
-function needsLoop<a>(x:a) returns (())  where a: Loop {
+function needsLoop<a>(x:a) returns (unit)  where a: Loop {
   return;
 }
 
-function main() returns (()) {
+function main() returns (unit) {
   return needsLoop(0);
 }

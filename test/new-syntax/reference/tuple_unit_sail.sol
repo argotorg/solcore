@@ -16,7 +16,7 @@ function unitValue() {
   return ();
 }
 
-function nestedTupleUnitPattern(p: ((), (word, word))) returns (word) {
+function nestedTupleUnitPattern(p: (unit, (word, word))) returns (word) {
   match (p) {
 case ((), (x, y)) {
 return x;

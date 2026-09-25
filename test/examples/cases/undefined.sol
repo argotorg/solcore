@@ -4,10 +4,10 @@ function undefined<any>() returns (any) {
   }
 }
 
-function useWord(w:word) returns (()) {}
+function useWord(w:word) returns (unit) {}
 
 contract Magic {
-  function main() public returns (()) {
+  function main() public returns (unit) {
     useWord(undefined());
   }
 }

@@ -2,8 +2,8 @@ trait C<self> {
     function size(x:self) returns (word);
 }
 
-impl C<()> {
-    function size(x:()) returns (word) {
+impl C<unit> {
+    function size(x:unit) returns (word) {
         return 0;
     }
 }

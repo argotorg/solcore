@@ -45,13 +45,13 @@ impl Typedef<memoryRef<a>, word> {
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 enum ref<a> { ref(a) }
 
 impl Assign<ref<a>, a> {
-    function assign(l:ref<a>, r:a) returns (()) {
+    function assign(l:ref<a>, r:a) returns (unit) {
         // builtin "stack store"
         return;
     }
@@ -59,7 +59,7 @@ impl Assign<ref<a>, a> {
 
 trait MemoryType<self> {
     function load(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 trait MemorySize<self> {
@@ -74,7 +74,7 @@ impl MemoryType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             mstore(ptr, value)
         }
@@ -85,7 +85,7 @@ impl MemoryType<uint> {
     function load(ptr:word) returns (uint) {
         return Typedef.abs(MemoryType.load(ptr));
     }
-    function store(ptr:word, value:uint) returns (()) {
+    function store(ptr:word, value:uint) returns (unit) {
         return MemoryType.store(ptr, Typedef.rep(value));
     }
 }

@@ -1,6 +1,6 @@
 import * from std;
 
-function yul_asm_switch_body() returns (()) {
+function yul_asm_switch_body() returns (unit) {
     let result : word = 0;
     let flag : word = 1;
     assembly {
@@ -11,7 +11,7 @@ function yul_asm_switch_body() returns (()) {
 }
 
 contract Foo {
-    function main() public returns (()) {
+    function main() public returns (unit) {
         return yul_asm_switch_body();
     }
 }

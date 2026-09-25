@@ -13,11 +13,11 @@ impl ValueTy<memory<t>> {
 }
 
 trait Ref<ref, deref> {
-    function store(loc: ref, value: deref) returns (());
+    function store(loc: ref, value: deref) returns (unit);
 }
 
 impl Ref<memory<t>, t> {
-   function store(loc: memory<t>, value: t) returns (()) {
+   function store(loc: memory<t>, value: t) returns (unit) {
         // We don't have a `ValueTy` bound on `t` anywhere, so this should raise a type error...
         let vw = ValueTy.rep(value);
     }

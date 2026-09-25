@@ -6,7 +6,7 @@ enum mapping<member, index> { mapping(word, Proxy<member>, Proxy<index>) } // st
 // data mapRef(a) = mapRef(word); //ref to a map elem
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 impl<a> Assign<storageRef<a>, a> {
@@ -51,7 +51,7 @@ impl<map, index, member> LValueMemberAccess<IndexAccessProxy<storageRef<mapping(
 
 enum MintCtx { MintCtx }
 enum balances_sel { balances_sel }
-impl CStructField<StructField<MintCtx, balances_sel>, mapping(word => word), ()> {}
+impl CStructField<StructField<MintCtx, balances_sel>, mapping(word => word), unit> {}
 
    function mint(amount:word) {
      let bal_prx = MemberAccessProxy(MintCtx, balances_sel);

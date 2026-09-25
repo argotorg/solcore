@@ -18,14 +18,14 @@ contract Counter {
 // instance StructField(S, f_sel):CStructField(ftype, preceding)) {}
 enum CounterCxt { CounterCxt }
 enum counter_sel { counter_sel }
-impl CStructField<StructField<ContractStorage<CounterCxt>, counter_sel>, word, ()> {}
+impl CStructField<StructField<ContractStorage<CounterCxt>, counter_sel>, word, unit> {}
 
 contract Counter {
   // struct CounterCxt { counter:word }
 
   function main() public returns (word) {
        let cxt : ContractStorage<CounterCxt> = ContractStorage(CounterCxt);
-       let counter_map : MemberAccessProxy<ContractStorage<CounterCxt>, counter_sel, ()>
+       let counter_map : MemberAccessProxy<ContractStorage<CounterCxt>, counter_sel, unit>
        = MemberAccessProxy(cxt, counter_sel);
 
        // let c1 = this.counter

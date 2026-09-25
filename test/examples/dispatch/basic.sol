@@ -8,7 +8,7 @@ function self() returns (address) {
 
 contract C {
     constructor() {}
-    function nothing() public returns (()) {}
+    function nothing() public returns (unit) {}
 
     // Re-enters this very contract via raw_call(address(this), ...). The payload
     // is the 4-byte selector of an existing entry point (something(), 0xa7a0d537),

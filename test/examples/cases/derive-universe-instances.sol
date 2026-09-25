@@ -5,7 +5,7 @@ pragma no-patterson-condition;
 pragma no-bounded-variable-condition;
 
 function eqUnit() returns (bool) {
-    let u : () = ();
+    let u : unit = ();
     return Eq.eq(u, u);
 }
 

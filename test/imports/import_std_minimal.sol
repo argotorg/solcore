@@ -1,3 +1,3 @@
 import std;
 
-function main() returns (()) {}
+function main() returns (unit) {}

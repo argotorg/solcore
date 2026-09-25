@@ -9,9 +9,9 @@ function myrevert<a>(offset:word, length:word) returns (a) {
         }
 
 }
-function require(cond: bool) returns (()) {
+function require(cond: bool) returns (unit) {
     if (!cond) {
-     let syntaxValue1: () = myrevert(0,0);
+     let syntaxValue1: unit = myrevert(0,0);
      syntaxValue1;
     }
 }
@@ -25,12 +25,12 @@ function callvalue() returns (uint256) {
 }
 
 contract Deposit {
-function deposit() public returns (()) {
+function deposit() public returns (unit) {
     require(callvalue() != uint256(0));
     return;
   }
 
-function main() public returns (()) {
+function main() public returns (unit) {
   deposit();
 }
 }

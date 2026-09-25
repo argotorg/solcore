@@ -2,7 +2,7 @@
 // promises (word) -> word.  Closure conversion would erase the arrow type;
 // the single-pass checker must still reject this.
 function makeAdder(x : word) returns (function(word) returns (word)) {
-  return lam (y : bool) -> word {
+  return lambda (y : bool) -> word {
     return x;
   };
 }

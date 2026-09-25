@@ -120,7 +120,7 @@ impl Ref<MemberAccess<Memory<structType>, fieldType, Memory<ty>>, ty> where Stru
     }
 }
 
-function test() returns (())
+function test() returns (unit)
 {
     let x:Memory<S>;
     let memberAccess:MemberAccess<Memory<S>, Field_x, Memory<Uint256>>;

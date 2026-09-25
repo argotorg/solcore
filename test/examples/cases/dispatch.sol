@@ -35,12 +35,12 @@ impl<name, args, rets, fn> Selector<Method<name, args, rets, fn>> where name: Se
 
 // Describes how to execute a given method / fallback
 trait ExecMethod<ty> {
-  function exec(x: ty, pstatus : Proxy<callvalueCheckStatus>) returns (());
+  function exec(x: ty, pstatus : Proxy<callvalueCheckStatus>) returns (unit);
 }
 
 // If fn matches the provided args/ret types, then we can execute any method
 impl<name, args, rets, fn, callvalueCheckStatus> ExecMethod<Method<name, Proxy<args>, Proxy<rets>, fn>> where fn: invokable<args, ret> {
-  function exec(m : Method<name, args, rets, fn>, pstatus : Proxy<callvalueCheckStatus>) returns (()) {
+  function exec(m : Method<name, args, rets, fn>, pstatus : Proxy<callvalueCheckStatus>) returns (unit) {
     match (m ) {
       case Method(nm,args,rets,fn) {
         // check callvalue
@@ -59,7 +59,7 @@ impl<name, args, rets, fn, callvalueCheckStatus> ExecMethod<Method<name, Proxy<a
 
 // If fn matches the provided args/ret types, then we can execute any fallback
 impl<args, rets, fn, callvalueCheckStatus> ExecMethod<Fallback<Proxy<args>, Proxy<rets>, fn>> where fn: invokable<args, ret> {
-  function exec(fb : Fallback<args, rets, fn>, pstatus : Proxy<callvalueCheckStatus>) returns (()) {
+  function exec(fb : Fallback<args, rets, fn>, pstatus : Proxy<callvalueCheckStatus>) returns (unit) {
     match (fb ) {
       case Fallback(args, rets, fn) {
         // check callvalue
@@ -80,13 +80,13 @@ impl<args, rets, fn, callvalueCheckStatus> ExecMethod<Fallback<Proxy<args>, Prox
 
 // For a given tuple of methods this executes the method specified by the first four bytes of calldata
 trait RunDispatch<ty> {
-  function go(methods : ty, pstatus : Proxy<callvalueCheckStatus>) returns (());
+  function go(methods : ty, pstatus : Proxy<callvalueCheckStatus>) returns (unit);
 }
 
 // We can dispatch to a single executable method with a known selector
 // TODO: do we need this instance?
 impl<m, callvalueCheckStatus> RunDispatch<m> where m: ExecMethod, m: Selector {
-  function go(method : m, pstatus : Proxy<callvalueCheckStatus>)  returns (()) {
+  function go(method : m, pstatus : Proxy<callvalueCheckStatus>)  returns (unit) {
     match (selector_matches(@m) ) {
       case Bool.True { ExecMethod.exec(method, pstatus);
       } case Bool.False { return;
@@ -96,7 +96,7 @@ impl<m, callvalueCheckStatus> RunDispatch<m> where m: ExecMethod, m: Selector {
 
 // We can dispatch to a tuple of executable methods with a known selector
 impl<n, m, callvalueCheckStatus> RunDispatch<(n, m)> where n: ExecMethod, n: Selector, m: ExecMethod, m: Selector {
-  function go(methods : (n, m), pstatus : Proxy<callvalueCheckStatus>) returns (()) {
+  function go(methods : (n, m), pstatus : Proxy<callvalueCheckStatus>) returns (unit) {
     match (methods ) {
       case (method_n, method_m) {
         match (selector_matches(@n) ) {
@@ -112,7 +112,7 @@ impl<n, m, callvalueCheckStatus> RunDispatch<(n, m)> where n: ExecMethod, n: Sel
 
 // Recursive instance
 impl<n, m, callvalueCheckStatus> RunDispatch<(n, m)> where n: ExecMethod, n: Selector, m: RunDispatch {
-  function go(methods : (n, m), pstatus : Proxy<callvalueCheckStatus>) returns (()) {
+  function go(methods : (n, m), pstatus : Proxy<callvalueCheckStatus>) returns (unit) {
     match (methods ) {
       case (method_n, rest) {
         match (selector_matches(@n) ) {
@@ -176,15 +176,15 @@ impl<methods> TopLevelCallvalueCheck<methods, CallvalueChecked> where methods: A
 
 // If only some methods are non payable, then we run the check during method execution
 trait MethodLevelCallvalueCheck<ty> {
-  function checkCallvalue(pty : Proxy<ty>, pstatus : Proxy<status>) returns (());
+  function checkCallvalue(pty : Proxy<ty>, pstatus : Proxy<status>) returns (unit);
 }
 
 default impl<method, status> MethodLevelCallvalueCheck<method> {
-  function checkCallvalue(pty : Proxy<method>, pstatus : Proxy<status>) returns (()) { }
+  function checkCallvalue(pty : Proxy<method>, pstatus : Proxy<status>) returns (unit) { }
 }
 
 impl<method, status> MethodLevelCallvalueCheck<method> where method: NonPayable, status: MethodsMustCheckCalldata {
-  function checkCallvalue(pty : Proxy<method>, pstatus : Proxy<status>) returns (()){
+  function checkCallvalue(pty : Proxy<method>, pstatus : Proxy<status>) returns (unit){
     assembly {
       if gt(callvalue(), 0) {
         mstore(0, 0x1)
@@ -198,12 +198,12 @@ impl<method, status> MethodLevelCallvalueCheck<method> where method: NonPayable,
 
 // Describes how to execute a given contract
 trait RunContract<c> {
-  function exec(v : c) returns (());
+  function exec(v : c) returns (unit);
 }
 
 // If we have a dispatch for the contracts methods, and we know how to execute it's fallback, then we can define an entrypoint
 impl<methods, fb> RunContract<Contract<methods, fb>> where methods: RunDispatch, fb: ExecMethod {
-  function exec(c : Contract<methods, fb>) returns (()) {
+  function exec(c : Contract<methods, fb>) returns (unit) {
     match (c ) {
       case Contract(ms, fb) {
         // set free memory pointer to the output of memoryguard
@@ -236,7 +236,7 @@ impl<methods, fb> RunContract<Contract<methods, fb>> where methods: RunDispatch,
 
 // compiler generated
 
-function revert_handler() returns (()) {
+function revert_handler() returns (unit) {
   assembly { revert(0,0) }
 }
 
@@ -262,7 +262,7 @@ contract C {
   function main() public returns (word) {
     let c = Contract(
       Method(C_Add2_Selector, @(word, word), @word, add2),
-      Fallback(@(),@(),revert_handler)
+      Fallback(@unit,@unit,revert_handler)
     );
 
     RunContract.exec(c);

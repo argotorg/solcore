@@ -10,29 +10,29 @@ contract ArrayCopy {
 
   constructor() {}
 
-  function pushA(v : uint256) public returns (()) {
+  function pushA(v : uint256) public returns (unit) {
     ArrayPush.push(a, v);
   }
 
-  function pushB(v : uint256) public returns (()) {
+  function pushB(v : uint256) public returns (unit) {
     ArrayPush.push(b, v);
   }
 
   // a = b
-  function copyBintoA() public returns (()) {
+  function copyBintoA() public returns (unit) {
     a = b;
   }
 
   // a = a  (must be a no-op, not a self-clobbering copy)
-  function copyAintoA() public returns (()) {
+  function copyAintoA() public returns (unit) {
     a = a;
   }
 
-  function setB(i : uint256, v : uint256) public returns (()) {
+  function setB(i : uint256, v : uint256) public returns (unit) {
     b[i] = v;
   }
 
-  function growA(n : uint256) public returns (()) {
+  function growA(n : uint256) public returns (unit) {
     Array.setLength(a, n);
   }
 

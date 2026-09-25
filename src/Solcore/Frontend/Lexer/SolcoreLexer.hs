@@ -112,7 +112,7 @@ reservedWords =
     "return",
     "true",
     "false",
-    "lam",
+    "lambda",
     "type",
     "pragma"
   ]

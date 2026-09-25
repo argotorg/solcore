@@ -7,12 +7,12 @@ contract MemberRegistry {
 
   constructor() {}
 
-  function addMember(addr : address) public returns (()) {
+  function addMember(addr : address) public returns (unit) {
     ArrayPush.push(members, addr);
   }
 
   // MemberNotFound() selector
-  function removeMember(addr : address) public returns (()) {
+  function removeMember(addr : address) public returns (unit) {
     // foundIdx == length() acts as the "not found" sentinel.
     let foundIdx : uint256 = Length.length(members);
     let i : uint256;

@@ -68,14 +68,22 @@ namedTypeP = do
   args <- option [] (try (angles (typeP `sepEndBy1` comma)))
   if qualifiedTypeName == Name "mapping"
     then fail "the mapping type uses mapping(Key => Value)"
-    else pure (TyCon qualifiedTypeName args)
+    -- `unit` is the surface spelling of the unit type; it is the ONLY accepted
+    -- spelling (`()` is rejected in type position, see parenTypeP).  Internally
+    -- the unit type is still TyCon "()" [].
+    else
+      if qualifiedTypeName == Name "unit" && null args
+        then pure (TyCon "()" [])
+        else pure (TyCon qualifiedTypeName args)
 
 parenTypeP :: Parser Ty
-parenTypeP = parens (mkParenTy <$> (typeP `sepEndBy` comma))
-  where
-    mkParenTy [] = TyCon "()" []
-    mkParenTy [t] = t
-    mkParenTy ts = foldr1 pairTy ts
+parenTypeP = do
+  ts <- parens (typeP `sepEndBy` comma)
+  case ts of
+    -- The unit type must be written `unit`; `()` is not accepted as a type.
+    [] -> fail "the unit type is written 'unit', not '()'"
+    [t] -> pure t
+    _ -> pure (foldr1 pairTy ts)
 
 mappingTypeP :: Parser Ty
 mappingTypeP = do

@@ -42,19 +42,19 @@ contract ArrayLit {
 
   // --- storage literals ---
 
-  function setThree() public returns (()) {
+  function setThree() public returns (unit) {
     xs = [10, 20, 30];
   }
 
-  function setFive() public returns (()) {
+  function setFive() public returns (unit) {
     xs = [1, 2, 3, 4, 5];
   }
 
-  function setTwo() public returns (()) {
+  function setTwo() public returns (unit) {
     xs = [7, 8];
   }
 
-  function clear() public returns (()) {
+  function clear() public returns (unit) {
     xs = [];
   }
 
@@ -68,7 +68,7 @@ contract ArrayLit {
 
   // Grow the array back without writing elements. Anything the shrink abandoned
   // must read as zero, not as the old value.
-  function grow(n : uint256) public returns (()) {
+  function grow(n : uint256) public returns (unit) {
     Array.setLength(xs, n);
   }
 }

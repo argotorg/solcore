@@ -12,7 +12,7 @@ function caller() returns (address) {
   return address(res);
 }
 
-function require1fail() returns (()) {
+function require1fail() returns (unit) {
   let res: word;
   assembly {
     mstore(0x0, 0x72657175697265313a204641494c) // "require1: FAIL"
@@ -21,14 +21,14 @@ function require1fail() returns (()) {
   return; // for the typechecker
 }
 
-function require1(cond: bool) returns (()) {
+function require1(cond: bool) returns (unit) {
     match (cond ) {
     case false { return require1fail();
     } case true { return;
   } }
 }
 
-function nop() returns (()) { return;}
+function nop() returns (unit) { return;}
 
 contract Mini {
   reserved : word;
@@ -39,7 +39,7 @@ contract Mini {
   balances : mapping(address => uint256);
   allowance : mapping(address => mapping(address => uint256));
 
-  function mint(amount:uint256) public returns (()) {
+  function mint(amount:uint256) public returns (unit) {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
@@ -91,7 +91,7 @@ contract Mini {
 */
 
 
-  function init() public returns (()) {
+  function init() public returns (unit) {
     owner = address(0x123456789abcdef);
     msg_sender = caller();
     decimals = uint256(18);

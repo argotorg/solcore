@@ -7,7 +7,7 @@ import * from std.dispatch;
 contract C {
   content: bytes;
 
-  function set(value: memory<bytes>) public returns (()) {
+  function set(value: memory<bytes>) public returns (unit) {
     content = value;
   }
 

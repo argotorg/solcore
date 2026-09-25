@@ -67,13 +67,13 @@ impl<a> Typedef<storageRef<a>, word> {
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 enum ref<a> { ref(a) }
 
 impl<a> Assign<ref<a>, a> {
-    function assign(l:ref<a>, r:a) returns (()) {
+    function assign(l:ref<a>, r:a) returns (unit) {
         // builtin "stack store"
         return;
     }
@@ -81,7 +81,7 @@ impl<a> Assign<ref<a>, a> {
 
 trait StorageType<self> {
     function sload(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 trait StorageSize<self> {
@@ -109,7 +109,7 @@ impl StorageType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             sstore(ptr, value)
         }
@@ -121,13 +121,13 @@ impl StorageType<uint> {
         let syntaxValue1: uint = Typedef.abs(sload_(ptr));
         return syntaxValue1; // type annotation needed due to a typechecker bug
     }
-    function store(ptr:word, value:uint) returns (()) {
+    function store(ptr:word, value:uint) returns (unit) {
         return sstore_(ptr, Typedef.rep(value));
     }
 }
 
 impl<a> Assign<storageRef<a>, a> where a: StorageType {
-    function assign(l:storageRef<a>, y:a) returns (()) {
+    function assign(l:storageRef<a>, y:a) returns (unit) {
         StorageType.store(Typedef.rep(l), y);
     }
 }
@@ -164,8 +164,8 @@ impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<Member
     }
 }
 
-impl StorageSize<()> {
-    function size(x:Proxy<()>) returns (word) {
+impl StorageSize<unit> {
+    function size(x:Proxy<unit>) returns (word) {
         return 0;
     }
 }

@@ -18,7 +18,7 @@ function mstore_(a:word, v:word) {
     assembly { mstore(a,v) }
 }
 
-trait Ref<r, d> { function load(x:r) returns (d); function store(x:r, v:d) returns (());}
+trait Ref<r, d> { function load(x:r) returns (d); function store(x:r, v:d) returns (unit);}
 
 trait Typedef<self, underlyingType> {
     function rep(x:self) returns (underlyingType);   // abbr: x.rep = Typedef.rep(x)
@@ -40,7 +40,7 @@ trait MemoryType<Self> {
     } */
     function memoryStep(word, self:Self) returns (word);
     function mload(r:word) returns (Self);
-    function mstore(r:word, v:Self) returns (());
+    function mstore(r:word, v:Self) returns (unit);
 }
 
 function sizeof<Self>(self:Self) returns (word)  where Self: MemoryType {
@@ -60,14 +60,14 @@ function stepStore<a>(aa: word, va: a) returns (word)  where a: MemoryType {
 
 impl<Self, r> Ref<r, Self> where Self: MemoryType, r: MemoryRef<Self> {
   function load(r:M<Self>) returns (Self) { return MemoryType.mload(xaddr(r)); }
-  function store(r:M<Self>, v:Self) returns (()) { MemoryType.mstore(xaddr(r), v); }
+  function store(r:M<Self>, v:Self) returns (unit) { MemoryType.mstore(xaddr(r), v); }
 }
 
 impl MemoryType<word> {
   function memorySize(p:Proxy<word>) returns (word) { return 32; }
   function memoryStep(a:word, self:word) returns (word) { return add_(a,32); }
   function mload(a: word) returns (word) { return mload_(a); }
-  function mstore(a: word, v:word) returns (()) { mstore_(a, v); }
+  function mstore(a: word, v:word) returns (unit) { mstore_(a, v); }
 }
 
 impl<a, b> MemoryType<(a, b)> where a: MemoryType, b: MemoryType {
@@ -82,7 +82,7 @@ impl<a, b> MemoryType<(a, b)> where a: MemoryType, b: MemoryType {
     return (va,vb);
   }
 
-  function mstore(aa:word, v: (a, b)) returns (()) {
+  function mstore(aa:word, v: (a, b)) returns (unit) {
     match (v ) { case pair(va, vb) { mstore2(aa, va, vb); } } // match-compiler cannot compile mopre than 1 stmt in a branch :(
   }
 }
