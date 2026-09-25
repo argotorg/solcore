@@ -23,7 +23,9 @@ struct Point {
 }
 
 contract C {
-  p : Point;
+  // A struct field is non-primitive, so it must be initialised explicitly
+  // (SC0233); the all-zero value here matches what an untouched slot reads.
+  p : Point = Point(uint256(0), uint256(0));
 
   constructor() {
     // product: size uint256 * 2 = 2 slots

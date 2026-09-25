@@ -1,0 +1,17 @@
+{
+  "light_switch": {
+    "bytecode": "",
+    "contract": "LightSwitch",
+    "tests": [
+      {
+        "input": { "comment": "constructor() (state initialised to Switch.On)", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "isOn() -> true (initializer honored; zero-init would read Off/false)", "calldata": "175bbecf", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000001" }
+      }
+    ]
+  }
+}

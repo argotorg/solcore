@@ -8,6 +8,8 @@ cd "$root_dir"
 bash ./scripts/test_contest_concurrency.sh
 
 bash ./contest.sh test/examples/dispatch/basic.json
+bash ./contest.sh test/examples/dispatch/field_init.json
+bash ./contest.sh test/examples/dispatch/light_switch.json
 bash ./contest.sh test/examples/dispatch/assembly.json
 bash ./contest.sh test/examples/dispatch/asm_break_continue_leave.json
 bash ./contest.sh test/examples/dispatch/asm_subst.json
