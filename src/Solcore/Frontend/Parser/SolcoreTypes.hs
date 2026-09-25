@@ -71,9 +71,10 @@ namedTypeP = do
     -- `unit` is the surface spelling of the unit type; it is the ONLY accepted
     -- spelling (`()` is rejected in type position, see parenTypeP).  Internally
     -- the unit type is still TyCon "()" [].
-    else if qualifiedTypeName == Name "unit" && null args
-      then pure (TyCon "()" [])
-      else pure (TyCon qualifiedTypeName args)
+    else
+      if qualifiedTypeName == Name "unit" && null args
+        then pure (TyCon "()" [])
+        else pure (TyCon qualifiedTypeName args)
 
 parenTypeP :: Parser Ty
 parenTypeP = do
