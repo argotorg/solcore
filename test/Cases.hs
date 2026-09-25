@@ -132,6 +132,7 @@ dispatches =
   testGroup
     "Files for dispatch cases"
     [ runDispatchTest "basic.sol",
+      runDispatchTest "field_init.sol",
       runDispatchTest "assembly.sol",
       runDispatchTest "asm_subst.sol",
       runDispatchTest "stringid.sol",
@@ -651,6 +652,8 @@ cases =
       runTestForFileWith dispatchOpt "storage-adt-recursive-ok.sol" caseFolder,
       runTestExpectingFailureWith dispatchOpt "storage-adt-recursive-fail.sol" caseFolder,
       runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.sol" caseFolder,
+      runTestExpectingFailureWith dispatchOpt "field-uninitialized-adt-fail.sol" caseFolder,
+      runTestForFileWith dispatchOpt "field-init-ok.sol" caseFolder,
       runTestExpectingFailure "array-elem-no-storagecopy.sol" caseFolder,
       runTestExpectingFailure "array-push-no-canstore.sol" caseFolder,
       runTestExpectingFailure "arraylit-mixed-types.sol" caseFolder,

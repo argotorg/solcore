@@ -1,0 +1,22 @@
+{
+  "field_init": {
+    "bytecode": "",
+    "contract": "Escrow",
+    "tests": [
+      {
+        "input": { "comment": "constructor() (phase initialised to Funded(7))", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "tag() -> 1 (Funded, not the zero-init AwaitingPayment)", "calldata": "51f91066", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000001" }
+      },
+      {
+        "input": { "comment": "amount() -> 7 (payload from the field initializer)", "calldata": "aa8c217c", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000007" }
+      }
+    ]
+  }
+}
