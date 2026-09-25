@@ -148,12 +148,12 @@ transContract structs c = c {decls = concatMap (flip transCDecl cenv) (injectFie
 -- them), and a constructor is synthesised when the contract declares none.
 -- Without this pass a field initializer parses but has no effect.
 injectFieldInits :: [NmContractDecl] -> [NmContractDecl]
-injectFieldInits decls
-  | null initStmts = decls
-  | any isConstr decls = map addInits decls
-  | otherwise = decls ++ [CConstrDecl (Constructor [] initStmts False)]
+injectFieldInits cdecls
+  | null initStmts = cdecls
+  | any isConstr cdecls = map addInits cdecls
+  | otherwise = cdecls ++ [CConstrDecl (Constructor [] initStmts False)]
   where
-    initStmts = [FieldAccess Nothing (fieldName f) := e | CFieldDecl f <- decls, Just e <- [fieldInit f]]
+    initStmts = [FieldAccess Nothing (fieldName f) := e | CFieldDecl f <- cdecls, Just e <- [fieldInit f]]
     isConstr (CConstrDecl _) = True
     isConstr _ = False
     addInits (CConstrDecl cd) = CConstrDecl cd {constrBody = initStmts ++ cd.constrBody}

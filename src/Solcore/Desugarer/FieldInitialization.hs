@@ -48,15 +48,15 @@ checkFieldInitialization registrySource localDecls =
       case Contract.contractKind c of
         ContractKind ->
           [ uninitializedFieldDiagnostic f
-          | f <- contractFields decls,
+          | f <- contractFields cdecls,
             fieldInit f == Nothing,
             fieldName f `Set.notMember` assigned,
             fieldNeedsInit registry (fieldTy f)
           ]
         _ -> []
       where
-        decls = Contract.decls c
-        assigned = constructorAssignedNames decls
+        cdecls = Contract.decls c
+        assigned = constructorAssignedNames cdecls
 
 allDataTys :: [TopDecl Name] -> [DataTy]
 allDataTys = concatMap go
@@ -67,13 +67,13 @@ allDataTys = concatMap go
     go _ = []
 
 contractFields :: [ContractDecl Name] -> [Field Name]
-contractFields decls = [f | CFieldDecl f <- decls]
+contractFields cdecls = [f | CFieldDecl f <- cdecls]
 
 constructorAssignedNames :: [ContractDecl Name] -> Set Name
-constructorAssignedNames decls =
+constructorAssignedNames cdecls =
   Set.fromList
     [ n
-    | CConstrDecl cd <- decls,
+    | CConstrDecl cd <- cdecls,
       (lhs := _) <- listify isAssign cd.constrBody,
       n <- listify (const True :: Name -> Bool) lhs
     ]
