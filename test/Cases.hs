@@ -328,6 +328,8 @@ cases =
       runTestForFile "asm-match-tuple-write-read.sol" caseFolder,
       runTestForFile "bal.sol" caseFolder,
       runTestExpectingFailure "BadInstance.sol" caseFolder,
+      runTestExpectingFailure "instance-missing-superclass-fail.sol" caseFolder,
+      runTestForFile "instance-superclass-ok.sol" caseFolder,
       runTestForFile "BoolNot.sol" caseFolder,
       runTestExpectingFailure "bound-minimal.sol" caseFolder,
       runTestExpectingFailure "bound-only-test.sol" caseFolder,
