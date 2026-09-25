@@ -29,11 +29,11 @@ contract C {
         assert(StorageSize.size(@Option<Pair>) == 3);
     }
 
-    function putOpt(k : uint256, v : uint256) public returns (()) {
+    function putOpt(k : uint256, v : uint256) public returns (unit) {
         opts[k] = Option.Some(v);
     }
 
-    function clearOpt(k : uint256) public returns (()) {
+    function clearOpt(k : uint256) public returns (unit) {
         opts[k] = Option.None;
     }
 
@@ -52,7 +52,7 @@ contract C {
         } }
     }
 
-    function putPair(k : uint256, a : uint256, b : uint256) public returns (()) {
+    function putPair(k : uint256, a : uint256, b : uint256) public returns (unit) {
         pairs[k] = Pair(a, b);
     }
 
@@ -62,11 +62,11 @@ contract C {
         } }
     }
 
-    function putOptPair(k : uint256, a : uint256, b : uint256) public returns (()) {
+    function putOptPair(k : uint256, a : uint256, b : uint256) public returns (unit) {
         optPairs[k] = Option.Some(Pair(a, b));
     }
 
-    function clearOptPair(k : uint256) public returns (()) {
+    function clearOptPair(k : uint256) public returns (unit) {
         optPairs[k] = Option.None;
     }
 

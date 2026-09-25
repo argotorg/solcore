@@ -15,7 +15,7 @@ enum Tree<a> { Leaf, Node(Tree<a>, a, Tree<a>) }
 // Use the auto-derived instances to check that from/to round-trip.
 function roundtripNone() returns (bool) {
     let x : Option<word> = Option.None;
-    let r : sum<(), word> = Generic.from(x);
+    let r : sum<unit, word> = Generic.from(x);
     let x2 : Option<word> = Generic.to(r);
     match (x2 ) {
     case Option.None    { return true;
@@ -25,7 +25,7 @@ function roundtripNone() returns (bool) {
 
 function roundtripSome(v : word) returns (bool) {
     let x : Option<word> = Option.Some(v);
-    let r : sum<(), word> = Generic.from(x);
+    let r : sum<unit, word> = Generic.from(x);
     let x2 : Option<word> = Generic.to(r);
     match (x2 ) {
     case Option.None     { return false;

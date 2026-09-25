@@ -12,11 +12,11 @@ function caller() returns (address) {
   return address(res);
 }
 
-function myrevert(msg: word) returns (()) {
+function myrevert(msg: word) returns (unit) {
        assembly { mstore(0, msg) revert(0, 32) }
 }
 
-function myrequire(cond: bool, msg: word ) returns (()) {
+function myrequire(cond: bool, msg: word ) returns (unit) {
       if( !cond ) { myrevert(msg); }
 }
 
@@ -28,7 +28,7 @@ contract MiniERC20 {
   balances : mapping(address => uint256);
   allowance : mapping(address => mapping(address => uint256));
 
-  function mint(amount:uint256) public returns (()) {
+  function mint(amount:uint256) public returns (unit) {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
@@ -54,7 +54,7 @@ contract MiniERC20 {
             , 0x746f6b656e2f696e73756666696369656e742d62616c616e6365
 	    );
 
-     if (src != msg_sender && allowance[src][msg_sender] != ((lam (syntaxValue: uint256) -> uint256 { return syntaxValue; })(Num.maxVal()))) {
+     if (src != msg_sender && allowance[src][msg_sender] != ((lambda (syntaxValue: uint256) -> uint256 { return syntaxValue; })(Num.maxVal()))) {
         myrequire( allowance[src][msg_sender] >= amt /* "token/insufficient-allowance" */
 	       , 0x746f6b656e2f696e73756666696369656e742d616c6c6f77616e6365
 	       );
@@ -81,7 +81,7 @@ contract MiniERC20 {
 
   }
 
-  function init() public returns (()) {
+  function init() public returns (unit) {
     owner = address(0x123456789abcdef);
     decimals = uint256(18); // Num.fromWord(18) fails, which may be a problem
   }

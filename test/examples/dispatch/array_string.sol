@@ -13,11 +13,11 @@ contract ArrayString {
 
   constructor() {}
 
-  function pushName(s : memory<string>) public returns (()) {
+  function pushName(s : memory<string>) public returns (unit) {
     ArrayPush.push(names, s);
   }
 
-  function setName(i : uint256, s : memory<string>) public returns (()) {
+  function setName(i : uint256, s : memory<string>) public returns (unit) {
     names[i] = s;
   }
 
@@ -30,7 +30,7 @@ contract ArrayString {
   }
 
   // backup = names
-  function saveBackup() public returns (()) {
+  function saveBackup() public returns (unit) {
     backup = names;
   }
 

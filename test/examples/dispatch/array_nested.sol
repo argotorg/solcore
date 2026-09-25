@@ -15,12 +15,12 @@ contract NestedArray {
 
   constructor() {}
 
-  function growOuter(n : uint256) public returns (()) {
+  function growOuter(n : uint256) public returns (unit) {
     Array.setLength(grid, n);
   }
 
   // grid[i].push(v) -- the inner handle comes straight out of the index
-  function pushInner(i : uint256, v : uint256) public returns (()) {
+  function pushInner(i : uint256, v : uint256) public returns (unit) {
     ArrayPush.push(grid[i], v);
   }
 
@@ -32,17 +32,17 @@ contract NestedArray {
     return grid[i][j];
   }
 
-  function set2(i : uint256, j : uint256, v : uint256) public returns (()) {
+  function set2(i : uint256, j : uint256, v : uint256) public returns (unit) {
     grid[i][j] = v;
   }
 
   // Mutate `flat` through a local alias; the field must observe it.
-  function aliasPush(v : uint256) public returns (()) {
+  function aliasPush(v : uint256) public returns (unit) {
     let p : storage<array<uint256>> = flat;
     ArrayPush.push(p, v);
   }
 
-  function aliasSet(i : uint256, v : uint256) public returns (()) {
+  function aliasSet(i : uint256, v : uint256) public returns (unit) {
     let p : storage<array<uint256>> = flat;
     p[i] = v;
   }

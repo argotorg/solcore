@@ -5,7 +5,7 @@ import * from std.opcodes;
 // pipeline exercises every wrapper signature.
 
 // no inputs, no return
-function shape_void_void() returns (()) {
+function shape_void_void() returns (unit) {
     stop();
     invalid();
 }
@@ -18,7 +18,7 @@ function shape_void_word() returns (word) {
 }
 
 // inputs, no return
-function shape_word_void(x: word) returns (()) {
+function shape_word_void(x: word) returns (unit) {
     pop(x);
     mstore(0, x);
 }

@@ -539,8 +539,10 @@ typeTests =
             "function(word, bool) returns (word, bool)",
             "function()"
           ],
-      testCase "unit type" $
-        parsesAs typeP "()" (TyCon "()" []),
+      testCase "unit type is spelled unit" $
+        parsesAs typeP "unit" (TyCon "()" []),
+      testCase "empty parens is not a type" $
+        parseFails typeP "()",
       testCase "parenthesized single type" $
         parsesAs typeP "(word)" word,
       testCase "pair type in parens" $
@@ -672,7 +674,7 @@ exprTests =
       testCase "lambda can be called immediately" $
         parsesAs
           expP
-          "(lam(x: word) -> word { return x; })(1)"
+          "(lambda(x: word) -> word { return x; })(1)"
           (ExpApply (Lam [Typed False "x" word] [Return (var "x")] (Just word)) [lit 1]),
       testCase "arbitrary postfix calls survive source pretty-printing" $
         mapM_
@@ -680,7 +682,7 @@ exprTests =
           [ "f(1)(2)",
             "callbacks[i](x)",
             "(condition ? f : g)(x)",
-            "(lam(x: word) -> word { return x; })(1)"
+            "(lambda(x: word) -> word { return x; })(1)"
           ],
       testCase "addition" $
         parsesAs expP "1 + 2" (ExpPlus (lit 1) (lit 2)),
@@ -803,26 +805,26 @@ exprTests =
       testCase "lambda no params" $
         parsesAs
           expP
-          "lam() -> word { return 0; }"
+          "lambda() -> word { return 0; }"
           (Lam [] [Return (lit 0)] (Just word)),
       testCase "lambda with typed param" $
         parsesAs
           expP
-          "lam(x:word) -> word { return x; }"
+          "lambda(x:word) -> word { return x; }"
           (Lam [Typed False "x" word] [Return (var "x")] (Just word)),
       testCase "lambda without return type" $
         parsesAs
           expP
-          "lam(x:word) { return x; }"
+          "lambda(x:word) { return x; }"
           (Lam [Typed False "x" word] [Return (var "x")] Nothing),
       testCase "name resolution lowers arbitrary calls and packs their arguments" $
         case runParserE
           (sc *> topDeclP <* eof)
           "<test>"
           ( "function packing(x: word, y: word, z: word) {"
-              ++ " (lam() -> word { return 1; })();"
-              ++ " (lam(a: word) -> word { return a; })(x);"
-              ++ " (lam(a: word, b: word, c: word) -> word { return a; })(x, y, z);"
+              ++ " (lambda() -> word { return 1; })();"
+              ++ " (lambda(a: word) -> word { return a; })(x);"
+              ++ " (lambda(a: word, b: word, c: word) -> word { return a; })(x, y, z);"
               ++ " }"
           ) of
           Left err -> assertFailure ("Parse error:\n" ++ err)
@@ -1234,7 +1236,7 @@ declTests =
               )
           ),
       testCase "legacy data word remains reserved" $
-        parseFails topDeclP "function data() returns (()) { return; }",
+        parseFails topDeclP "function data() returns (unit) { return; }",
       testCase "underscore-prefixed function and parameter names parse is rejected" $
         parseFails topDeclP "function _id(_value: word) returns (word) { return _value; }",
       testCase "empty enum" $
@@ -1687,7 +1689,11 @@ legacySyntaxTests =
       testCase "equals type alias remains supported" $
         parsesAs topDeclP "type Word = word;" (TSym (TySym "Word" [] word)),
       testCase "lambda arrow return remains supported" $
-        parsesAs expP "lam() -> word { return 0; }" (Lam [] [Return (lit 0)] (Just word))
+        parsesAs expP "lambda() -> word { return 0; }" (Lam [] [Return (lit 0)] (Just word)),
+      testCase "lambda with unit return type" $
+        parsesAs expP "lambda() -> unit { return 0; }" (Lam [] [Return (lit 0)] (Just (TyCon "()" []))),
+      testCase "lambda unit return is not spelled with empty parens" $
+        parseFails expP "lambda() -> () { return 0; }"
     ]
 
 declarationShellTests :: TestTree
@@ -1891,7 +1897,7 @@ declarationShellTests =
         case runParserE
           (sc *> topDeclP <* eof)
           "<test>"
-          "function unitValue() returns (()) { return (); }" of
+          "function unitValue() returns (unit) { return (); }" of
           Left err -> assertFailure ("Parse error:\n" ++ err)
           Right parsed -> do
             resolved <- nameResolution (CompUnit [] [parsed])
@@ -1902,7 +1908,7 @@ declarationShellTests =
                 let rendered = SolcorePretty.pretty resolvedDecl
                 assertBool
                   ("semantic pretty output lost the explicit unit item:\n" ++ rendered)
-                  ("returns (())" `isInfixOf` rendered)
+                  ("returns (unit)" `isInfixOf` rendered)
                 nameResolutionSucceeds rendered
               Right got ->
                 assertFailure ("Unexpected resolved output: " ++ show got),

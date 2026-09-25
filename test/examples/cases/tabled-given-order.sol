@@ -6,18 +6,18 @@ trait C<a> {}
 
 impl<a> C<a> where a: A, a: B {}
 
-function needsC<a>(x:a) returns (())  where a: C {
+function needsC<a>(x:a) returns (unit)  where a: C {
   return;
 }
 
-function fromAB<a>(x:a) returns (())  where a: A, a: B {
+function fromAB<a>(x:a) returns (unit)  where a: A, a: B {
   return needsC(x);
 }
 
-function fromBA<a>(x:a) returns (())  where a: B, a: A {
+function fromBA<a>(x:a) returns (unit)  where a: B, a: A {
   return needsC(x);
 }
 
-function main() returns (()) {
+function main() returns (unit) {
   return;
 }

@@ -1,5 +1,5 @@
 function inc(x : word) returns (word) {
-  let f = lam () {
+  let f = lambda () {
     let res : word ; 
     assembly {
       res := add(x,1)

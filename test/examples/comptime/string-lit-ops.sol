@@ -7,7 +7,7 @@ pragma no-bounded-variable-condition ;
 // These functions are intended to be folded by MastEval at compile time.
 
 contract StringLitOps {
-  function main() public returns (()) {
+  function main() public returns (unit) {
     // concatLit folds to a string literal, enabling revertLit("...") lowering
     let s :  comptime<string>  = concatLit("ab", "cd");
     std.revertLit(s);

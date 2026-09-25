@@ -5,7 +5,7 @@ trait ABIAttribs<self> {
     function isStatic(ty:Proxy<self>) returns (bool);
 }
 
-impl ABIAttribs<()> {
+impl ABIAttribs<unit> {
     function headSize(ty : Proxy<uint256>) returns (word) { return 0; }
     function isStatic(ty : Proxy<uint256>) returns (bool) { return true; }
 }

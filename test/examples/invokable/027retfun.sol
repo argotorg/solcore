@@ -3,7 +3,7 @@ contract Id1 {
 
   function foo() {
     let y = 42;
-    let nid = lam(x) {return y;};
+    let nid = lambda(x) {return y;};
     return nid;
   }
   function main() {

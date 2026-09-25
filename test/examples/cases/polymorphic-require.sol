@@ -20,12 +20,12 @@ function callvalue() returns (uint256) {
 }
 
 contract Deposit {
-function deposit() public returns (()) {
+function deposit() public returns (unit) {
     require(callvalue() != uint256(0));
     return;
   }
 
-function main() public returns (()) {
+function main() public returns (unit) {
   deposit();
 }
 }

@@ -3,7 +3,7 @@ trait Loadable<ref, deref> {
 }
 
 trait Storable<ref, deref> {
-    function store (r : ref, d : deref) returns (());
+    function store (r : ref, d : deref) returns (unit);
 }
 
 // haskell style class constraints

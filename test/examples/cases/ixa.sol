@@ -34,7 +34,7 @@ impl Mul<word> {
 
 trait MemoryType<a> {
   function load(loc : word) returns (a);
-  function store(loc: word, val : a) returns (());
+  function store(loc: word, val : a) returns (unit);
   function size(prx : Proxy<a>) returns (word);
 }
 
@@ -45,7 +45,7 @@ impl MemoryType<word> {
     return ret;
   }
 
-  function store(loc : word, val : word) returns (()) {
+  function store(loc : word, val : word) returns (unit) {
     assembly { mstore(loc,val) }
   }
 
@@ -61,7 +61,7 @@ impl<a> MemoryType<memory<array<a>>> {
     return memory(ret);
   }
 
-  function store(loc : word, val : memory<array<a>>) returns (()) {
+  function store(loc : word, val : memory<array<a>>) returns (unit) {
     match (val ) {
       case memory(ptr) { assembly { mstore(loc,ptr) }
     } }
@@ -75,11 +75,11 @@ impl<a> MemoryType<memory<array<a>>> {
 // --- Assignment ---
 
 trait Assign<lhs, rhs> {
-  function assign(l : lhs, r : rhs) returns (());
+  function assign(l : lhs, r : rhs) returns (unit);
 }
 
 impl Assign<memory<word>, word> {
-  function assign(ptr : memory<word>, val : word) returns (()) {
+  function assign(ptr : memory<word>, val : word) returns (unit) {
     match (ptr ) {
       case memory(loc) { assembly {
           mstore(loc, val)
@@ -123,7 +123,7 @@ impl<a> LValueIdxAccess<(memory<array<a>>, word), memory<a>> where a: MemoryType
 
 // --- Examples ---
 
-function main() returns (()) {
+function main() returns (unit) {
   let x : memory<array<memory<array<word>>>> = memory(0);
   let y : word = 0;
   let z : memory<array<word>> = memory(0);

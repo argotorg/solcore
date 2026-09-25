@@ -1,6 +1,6 @@
 import * from std;
 
-function yul_asm_for_body() returns (()) {
+function yul_asm_for_body() returns (unit) {
     let result : word = 0;
     assembly {
         for { let i := 0 } lt(i, 3) { i := add(i, 1) } {
@@ -10,7 +10,7 @@ function yul_asm_for_body() returns (()) {
 }
 
 contract Foo {
-    function main() public returns (()) {
+    function main() public returns (unit) {
         return yul_asm_for_body();
     }
 }

@@ -33,8 +33,9 @@ newSyntaxTypeTests =
           typeP
           "(moduleA . /* segment */ Value<word,>, bool,)"
           (pairTy (TyCon (QualName "moduleA" "Value") [TyCon "word" []]) (TyCon "bool" [])),
-      testCase "empty and singleton tuple types" $ do
-        parsesAs typeP "()" (TyCon "()" [])
+      testCase "empty parens is rejected, singleton tuple type collapses" $ do
+        parseFails typeP "()"
+        parsesAs typeP "unit" (TyCon "()" [])
         parsesAs typeP "(word,)" (TyCon "word" []),
       testCase "generic parameters allow a trailing comma" $
         parsesAs typeParamsP "<a, b,>" [TyCon "a" [], TyCon "b" []],
@@ -102,7 +103,7 @@ newSyntaxTypeTests =
             "class",
             "forall",
             "instance",
-            "lam",
+            "lambda",
             "function",
             "true",
             "false",

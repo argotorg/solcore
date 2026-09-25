@@ -30,8 +30,8 @@ contract C {
   function id (x : word) public returns (word) {
     return x;
   }
-  function main () public returns (()) {
-    let p : (word, word, word, ());
+  function main () public returns (unit) {
+    let p : (word, word, word, unit);
     let x : word = Nth.nth(@Zero, p);
     let y : word = Nth.nth(@Succ<Zero>, p);
     let z : word = Nth.nth(@Succ<Succ<Zero>>, p);

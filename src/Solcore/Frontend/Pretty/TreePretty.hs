@@ -563,7 +563,7 @@ pprExpNode (ExpDotName n es) =
     <> ppr n
     <> parens (commaSep (map (pprExpPrec lowestExpPrec) es))
 pprExpNode (Lam args bd lambdaRetTy) =
-  (text "lam" <> pprParams args)
+  (text "lambda" <> pprParams args)
     <+> maybe empty (\t -> text "->" <+> ppr t) lambdaRetTy
     <+> lbrace
     $$ nest 3 (vcat (map ppr bd))
@@ -734,7 +734,7 @@ instance Pretty Ty where
           <> parens (ppr keyTy <+> text "=>" <+> ppr valueTy)
   ppr t@(TyCon n _)
     | isTuple n = parens $ commaSep (map ppr (tupleElements t))
-    | isUnit n = text "()"
+    | isUnit n = text "unit"
   ppr (TyCon n ts) =
     ppr n <> pprTyParams ts
 

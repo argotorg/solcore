@@ -145,7 +145,7 @@ litP =
 
 lamP :: BodyP -> Parser Exp
 lamP bp = locatedP locatedExp $ do
-  keyword "lam"
+  keyword "lambda"
   ps <- parens (lambdaParamP `sepEndBy` comma)
   retTy <- optional (symbol "->" *> typeP)
   body <- braces bp

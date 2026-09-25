@@ -84,7 +84,7 @@ export {
     selfdestruct
 };
 
-function stop() returns (()) {
+function stop() returns (unit) {
     assembly {
         stop()
     }
@@ -362,7 +362,7 @@ function calldatasize() returns (word) {
     return res;
 }
 
-function calldatacopy(a: word, b: word, c: word) returns (()) {
+function calldatacopy(a: word, b: word, c: word) returns (unit) {
     assembly {
         calldatacopy(a, b, c)
     }
@@ -376,7 +376,7 @@ function codesize() returns (word) {
     return res;
 }
 
-function codecopy(a: word, b: word, c: word) returns (()) {
+function codecopy(a: word, b: word, c: word) returns (unit) {
     assembly {
         codecopy(a, b, c)
     }
@@ -398,7 +398,7 @@ function extcodesize(a: word) returns (word) {
     return res;
 }
 
-function extcodecopy(a: word, b: word, c: word, d: word) returns (()) {
+function extcodecopy(a: word, b: word, c: word, d: word) returns (unit) {
     assembly {
         extcodecopy(a, b, c, d)
     }
@@ -412,7 +412,7 @@ function returndatasize() returns (word) {
     return res;
 }
 
-function returndatacopy(a: word, b: word, c: word) returns (()) {
+function returndatacopy(a: word, b: word, c: word) returns (unit) {
     assembly {
         returndatacopy(a, b, c)
     }
@@ -514,7 +514,7 @@ function blobbasefee() returns (word) {
     return res;
 }
 
-function pop(a: word) returns (()) {
+function pop(a: word) returns (unit) {
     assembly {
         pop(a)
     }
@@ -528,13 +528,13 @@ function mload(a: word) returns (word) {
     return res;
 }
 
-function mstore(a: word, b: word) returns (()) {
+function mstore(a: word, b: word) returns (unit) {
     assembly {
         mstore(a, b)
     }
 }
 
-function mstore8(a: word, b: word) returns (()) {
+function mstore8(a: word, b: word) returns (unit) {
     assembly {
         mstore8(a, b)
     }
@@ -548,7 +548,7 @@ function sload(a: word) returns (word) {
     return res;
 }
 
-function sstore(a: word, b: word) returns (()) {
+function sstore(a: word, b: word) returns (unit) {
     assembly {
         sstore(a, b)
     }
@@ -578,43 +578,43 @@ function tload(a: word) returns (word) {
     return res;
 }
 
-function tstore(a: word, b: word) returns (()) {
+function tstore(a: word, b: word) returns (unit) {
     assembly {
         tstore(a, b)
     }
 }
 
-function mcopy(a: word, b: word, c: word) returns (()) {
+function mcopy(a: word, b: word, c: word) returns (unit) {
     assembly {
         mcopy(a, b, c)
     }
 }
 
-function log0(a: word, b: word) returns (()) {
+function log0(a: word, b: word) returns (unit) {
     assembly {
         log0(a, b)
     }
 }
 
-function log1(a: word, b: word, c: word) returns (()) {
+function log1(a: word, b: word, c: word) returns (unit) {
     assembly {
         log1(a, b, c)
     }
 }
 
-function log2(a: word, b: word, c: word, d: word) returns (()) {
+function log2(a: word, b: word, c: word, d: word) returns (unit) {
     assembly {
         log2(a, b, c, d)
     }
 }
 
-function log3(a: word, b: word, c: word, d: word, e: word) returns (()) {
+function log3(a: word, b: word, c: word, d: word, e: word) returns (unit) {
     assembly {
         log3(a, b, c, d, e)
     }
 }
 
-function log4(a: word, b: word, c: word, d: word, e: word, f: word) returns (()) {
+function log4(a: word, b: word, c: word, d: word, e: word, f: word) returns (unit) {
     assembly {
         log4(a, b, c, d, e, f)
     }
@@ -644,7 +644,7 @@ function callcode(a: word, b: word, c: word, d: word, e: word, f: word, g: word)
     return res;
 }
 
-function return_(a: word, b: word) returns (()) {
+function return_(a: word, b: word) returns (unit) {
     assembly {
         return(a, b)
     }
@@ -674,19 +674,19 @@ function staticcall(a: word, b: word, c: word, d: word, e: word, f: word) return
     return res;
 }
 
-function revert_(a: word, b: word) returns (()) {
+function revert_(a: word, b: word) returns (unit) {
     assembly {
         revert(a, b)
     }
 }
 
-function invalid() returns (()) {
+function invalid() returns (unit) {
     assembly {
         invalid()
     }
 }
 
-function selfdestruct(a: word) returns (()) {
+function selfdestruct(a: word) returns (unit) {
     assembly {
         selfdestruct(a)
     }

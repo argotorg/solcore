@@ -19,7 +19,7 @@ trait Invokable<self, args, ret> {
 contract Id1 {
   // modifier calls its argument and adds one to result
   function add1mod(f) {
-    return lam(a) { return add1(f(a)); }
+    return lambda(a) { return add1(f(a)); }
   }
 
   function foo(x) {

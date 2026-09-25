@@ -574,7 +574,7 @@ pprTypedExpNode (Call (Just receiver) n es) =
     <> parens
       (nest 1 $ commaSep $ map (pprTypedExpPrec lowestTypedExpPrec) es)
 pprTypedExpNode (Lam args bd lambdaRetTy) =
-  (text "lam" <> pprParams args)
+  (text "lambda" <> pprParams args)
     <+> maybe empty (\ty -> text "->" <+> ppr ty) lambdaRetTy
     <+> lbrace
     $$ nest 3 (vcat (map ppr bd))
@@ -688,7 +688,7 @@ instance Pretty Ty where
           <> parens (ppr keyTy <+> text "=>" <+> ppr valueTy)
   ppr t@(TyCon n _)
     | isTuple n = parens $ commaSep (map ppr (tupleElements t))
-    | isUnit n = text "()"
+    | isUnit n = text "unit"
   ppr (TyCon n ts) =
     ppr n <> pprTyParams ts
 

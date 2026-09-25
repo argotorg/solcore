@@ -9,10 +9,10 @@ impl A<word> {}
 impl<a> B<WrapB<a>> where a: A {}
 impl<a> A<WrapA<a>> where a: B {}
 
-function needsA<a>(x:a) returns (())  where a: A {
+function needsA<a>(x:a) returns (unit)  where a: A {
   return;
 }
 
-function main() returns (()) {
+function main() returns (unit) {
   return needsA(WrapA(WrapB(0)));
 }

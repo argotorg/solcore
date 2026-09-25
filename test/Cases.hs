@@ -132,6 +132,7 @@ dispatches =
   testGroup
     "Files for dispatch cases"
     [ runDispatchTest "basic.sol",
+      runDispatchTest "lambda_unit.sol",
       runDispatchTest "assembly.sol",
       runDispatchTest "asm_subst.sol",
       runDispatchTest "stringid.sol",

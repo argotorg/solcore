@@ -85,7 +85,7 @@ contract DepositContract {
 
   // TODO: once string literals are properly supported, change errors to messages
   // matching the deposit contract, full 100% identical behaviour.
-  function deposit(pubkey: memory<bytes>, withdrawal_credentials: memory<bytes>, signature: memory<bytes>, deposit_data_root: bytes32) public payable returns (()) {
+  function deposit(pubkey: memory<bytes>, withdrawal_credentials: memory<bytes>, signature: memory<bytes>, deposit_data_root: bytes32) public payable returns (unit) {
     // Extended ABI length checks since dynamic types are used.
     require(MemorySize.len(pubkey) == 48, Error(0x9ca717ed)); // InvalidPubkeyLength()
     require(MemorySize.len(withdrawal_credentials) == 32, Error(0x3debbf1e)); // InvalidWithdrawalCredentialsLength()

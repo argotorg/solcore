@@ -1,5 +1,5 @@
 function test() returns (word) {
-    let f = lam (x: word) -> word {
+    let f = lambda (x: word) -> word {
         let y : word = 42;
         return y;
     };

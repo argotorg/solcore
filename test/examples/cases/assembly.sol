@@ -8,7 +8,7 @@ impl Mem<word> {
   }
 }
 
-function foo () returns (()) {
+function foo () returns (unit) {
   let ptr : word;
   let arg : word = 0;
   let size = Mem.size(arg);

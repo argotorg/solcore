@@ -3,7 +3,7 @@ import * from std;
 // import prelude;
 
 
-function log1<t>(v:t, topic:word) returns (())  where t: Typedef<word> {
+function log1<t>(v:t, topic:word) returns (unit)  where t: Typedef<word> {
   let w : word = Typedef.rep(v);
   assembly {
     mstore(0,w)
@@ -14,7 +14,7 @@ function log1<t>(v:t, topic:word) returns (())  where t: Typedef<word> {
 contract Counter {
 
   // setCounter & getCounter are intentionally low-level to avoid clutter
-  function setCounter(v: uint256) public returns (()) {
+  function setCounter(v: uint256) public returns (unit) {
     match (v ) { case uint256(w) {
       assembly {
 	sstore(0x00, w)
@@ -31,7 +31,7 @@ contract Counter {
   }
 
   constructor(x:uint256, y:uint256, z:uint256)
-  // function  myconstructor(x:uint256, y:uint256, z:uint256) -> ()
+  // function  myconstructor(x:uint256, y:uint256, z:uint256) -> unit
   {
    log1(x, 0xc1);
    log1(y, 0xc2);
@@ -43,7 +43,7 @@ contract Counter {
 
 /*
   init_(x:uint256, y:uint256, z:uint256)
-  // function  myconstructor(x:uint256, y:uint256, z:uint256) -> ()
+  // function  myconstructor(x:uint256, y:uint256, z:uint256) -> unit
   {
    setCounter(x+y+z);
   }
@@ -64,7 +64,7 @@ contract Counter {
     return res;
   }
 
-  function start() -> () {
+  function start() -> unit {
     assembly { mstore(64, memoryguard(128)) }
 
     let conargs = copy_arguments_for_constructor();

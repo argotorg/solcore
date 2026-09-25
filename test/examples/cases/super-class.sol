@@ -33,6 +33,6 @@ impl<a> Eq<List<a>> where a: Eq {
   }
 }
 
-function foo() returns (()) {
+function foo() returns (unit) {
   let x = Eq.eq(List.Cons(Bool.True,List.Nil), List.Nil);
 }

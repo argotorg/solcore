@@ -51,7 +51,7 @@ contract MiniERC20 {
   }
 
   // Note that this is not access guarded — the minting always goes to the owner
-  function mint(amount:uint256) public returns (()) {
+  function mint(amount:uint256) public returns (unit) {
     balances[owner] = Num.add(balances[owner], amount);
     totalSupply = Num.add(totalSupply, amount);
   }
@@ -64,7 +64,7 @@ contract MiniERC20 {
      let msg_sender = caller();
      require(balances[src] >= amt, "transferFrom: insufficient balance");
 
-     if (src != msg_sender && allowance[src][msg_sender] != ((lam (syntaxValue: uint256) -> uint256 { return syntaxValue; })(Num.maxVal()))) {
+     if (src != msg_sender && allowance[src][msg_sender] != ((lambda (syntaxValue: uint256) -> uint256 { return syntaxValue; })(Num.maxVal()))) {
         require(allowance[src][msg_sender] >= amt, "transferFrom: insufficient allowance");
         allowance[src][msg_sender] -= amt;
      }

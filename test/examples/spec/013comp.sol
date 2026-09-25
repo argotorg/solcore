@@ -1,6 +1,6 @@
 contract Compose {
   function compose(f,g) public {
-    return lam (x) {
+    return lambda (x) {
       return f(g(x));
     } ;
   }

@@ -23,7 +23,7 @@ enum array<size, elem> { array }
 enum memory<a> { memory(word) }
 
 trait IndexAccessible<self, indexType, elementType> {
-    function set(self:self, ix:indexType, val:elementType) returns (());
+    function set(self:self, ix:indexType, val:elementType) returns (unit);
     function at(self:self, ix:indexType) returns (elementType);
 }
 
@@ -48,7 +48,7 @@ impl<prev> ToWord<Succ<prev>> where prev: ToWord {
 
 trait MemoryType<self> {
     function load(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 impl MemoryType<word> {
@@ -57,7 +57,7 @@ impl MemoryType<word> {
         assembly { val := mload(ptr) }
         return val;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly { mstore(ptr, value) }
     }
 }
@@ -83,7 +83,7 @@ impl<size, elem> IndexAccessible<memory<array<size, elem>>, word, elem> where si
         } }
     }
 
-    function set(self : memory<array<size, elem>>, index : word, val : elem) returns (()) {
+    function set(self : memory<array<size, elem>>, index : word, val : elem) returns (unit) {
         let syntaxValue3: Itself<size> = Itself.ItselfRuntimeTag;
         let sizeValue = ToWord.toWord(syntaxValue3);
 

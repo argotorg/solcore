@@ -24,7 +24,7 @@ contract Ownable {
     return owner;
   }
 
-  function changeOwner(newOwner : address) public returns (()) {
+  function changeOwner(newOwner : address) public returns (unit) {
     require(caller() == owner, Error(0x12b0c500)); // OwnableUnauthorizedAccount()
     owner = newOwner;
   }

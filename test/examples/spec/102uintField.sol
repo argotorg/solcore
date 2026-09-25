@@ -54,13 +54,13 @@ impl Typedef<memoryRef<a>, word> {
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 enum ref<a> { ref(a) }
 
 impl Assign<ref<a>, a> {
-    function assign(l:ref<a>, r:a) returns (()) {
+    function assign(l:ref<a>, r:a) returns (unit) {
         // builtin "stack store"
         return;
     }
@@ -68,7 +68,7 @@ impl Assign<ref<a>, a> {
 
 trait MemoryType<self> {
     function load(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 trait MemorySize<self> {
@@ -96,7 +96,7 @@ impl MemoryType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             mstore(ptr, value)
         }
@@ -108,7 +108,7 @@ impl MemoryType<uint> {
         let syntaxValue1: uint = Typedef.abs(mload_(ptr));
         return syntaxValue1;  // type annotation needed due to a typechecker bug
     }
-    function store(ptr:word, value:uint) returns (()) {
+    function store(ptr:word, value:uint) returns (unit) {
         return mstore_(ptr, Typedef.rep(value));
     }
 }
@@ -155,8 +155,8 @@ impl<structType, fieldSelector, fieldType, offsetType> LValueMemberAccess<Member
     }
 }
 
-impl MemorySize<()> {
-    function size(x:Proxy<()>) returns (word) {
+impl MemorySize<unit> {
+    function size(x:Proxy<unit>) returns (word) {
         return 0;
     }
 }
@@ -205,7 +205,7 @@ enum fld1_sel { fld1_sel }
 // data y_sel = y_sel;
 // data z_sel = z_sel;
 
-impl CStructField<StructField<S, fld1_sel>, uint, ()> {}
+impl CStructField<StructField<S, fld1_sel>, uint, unit> {}
 // instance StructField(S, y_sel):CStructField(uint, uint) {}
 // BUG: This next one should really be the following, but that breaks weirdly:
 // (I get a patterson condition violation on an invoke instance for g)
@@ -234,7 +234,7 @@ function g() returns (word) {
     // let y:word = 42;
     let z:uint = uint(42);
 
-    let offset0 : Proxy<()> = Proxy;
+    let offset0 : Proxy<unit> = Proxy;
     // s.fld1 = z
     let fld1_lval : memoryRef<uint>
                   = LValueMemberAccess.memberAccess(MemberAccessProxy(s, fld1_sel, offset0));

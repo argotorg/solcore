@@ -20,7 +20,7 @@ contract Bug {
     }
 
     function makeClosure(e : word) public returns (word) {
-        let f = lam (x : word) {
+        let f = lambda (x : word) {
             return Add.add(x,e);  // this crashes
 	    // return addW(e,x);  // this works
         };

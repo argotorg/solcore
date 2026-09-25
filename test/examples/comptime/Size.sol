@@ -19,8 +19,8 @@ default impl<self> StorageSize<self> {
     }
 }
 
-impl StorageSize<()> {
-    function size(x:Proxy<()>) returns (word) {
+impl StorageSize<unit> {
+    function size(x:Proxy<unit>) returns (word) {
         return 0;
     }
 }
@@ -43,5 +43,5 @@ impl<a, b> StorageSize<(a, b)> where a: StorageSize, b: StorageSize {
 contract Size {
   function main() public returns (word) {
   return
-    StorageSize.size(@(word, (word, ()))); }
+    StorageSize.size(@(word, (word, unit))); }
 }

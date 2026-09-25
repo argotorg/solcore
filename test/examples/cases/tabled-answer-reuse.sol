@@ -7,10 +7,10 @@ impl Seed<word> {}
 
 impl<a> Derived<a> where a: Seed {}
 
-function needsDerivedTwice<a>(x:a) returns (())  where a: Derived, a: Derived {
+function needsDerivedTwice<a>(x:a) returns (unit)  where a: Derived, a: Derived {
   return;
 }
 
-function main() returns (()) {
+function main() returns (unit) {
   return needsDerivedTwice(0);
 }

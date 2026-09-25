@@ -28,10 +28,10 @@ function viaRevert<a>() returns (a) {
   }
 }
 
-function useWord(w: word) returns (()) {}
+function useWord(w: word) returns (unit) {}
 
 contract Terminators {
-  function main() public returns (()) {
+  function main() public returns (unit) {
     useWord(viaStop());
     useWord(viaInvalid());
     useWord(viaSelfdestruct(0));

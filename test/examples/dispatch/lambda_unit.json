@@ -1,0 +1,17 @@
+{
+  "lambda_unit": {
+    "bytecode": "",
+    "contract": "LambdaUnit",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "run(21) -> 42 (value lambda doubles; unit-returning lambda is a no-op)", "calldata": "a444f5e90000000000000000000000000000000000000000000000000000000000000015", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000002a" }
+      }
+    ]
+  }
+}

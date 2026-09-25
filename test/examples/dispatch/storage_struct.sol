@@ -31,7 +31,7 @@ contract C {
   }
 
   // whole-struct write
-  function setPoint(a : uint256, b : uint256) public returns (()) {
+  function setPoint(a : uint256, b : uint256) public returns (unit) {
     p = Point(a, b);
   }
 
@@ -52,11 +52,11 @@ contract C {
   }
 
   // write a single field via dot access (read-modify-write the whole struct)
-  function setX(v : uint256) public returns (()) {
+  function setX(v : uint256) public returns (unit) {
     p.x = v;
   }
 
-  function setY(v : uint256) public returns (()) {
+  function setY(v : uint256) public returns (unit) {
     p.y = v;
   }
 }

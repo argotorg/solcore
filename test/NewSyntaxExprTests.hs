@@ -34,11 +34,11 @@ newSyntaxExprTests =
             "(1,)",
             "(1, 2,)",
             "((1, 2,),)",
-            "lam () { return; }",
-            "lam (x,) -> word { return x; }",
-            "lam (x, comptime y: word,) -> (word, bool) { return (x, true); }",
-            "lam (x) -> comptime<word> { return x; }",
-            "(lam (x) { return x; })(1)",
+            "lambda () { return; }",
+            "lambda (x,) -> word { return x; }",
+            "lambda (x, comptime y: word,) -> (word, bool) { return (x, true); }",
+            "lambda (x) -> comptime<word> { return x; }",
+            "(lambda (x) { return x; })(1)",
             "f(1)(2)[0].field",
             "a ? b ? c : d : e",
             "a ? b : c ? d : e",
@@ -61,10 +61,10 @@ newSyntaxExprTests =
             "[1,]",
             "f(1,)",
             ".Some(1,)",
-            "lam (x) returns (word) { return x; }",
-            "lam (comptime x) { return x; }",
-            "lam (x: comptime<word>) { return x; }",
-            "lam () { 1 }",
+            "lambda (x) returns (word) { return x; }",
+            "lambda (comptime x) { return x; }",
+            "lambda (x: comptime<word>) { return x; }",
+            "lambda () { 1 }",
             "a < b < c",
             "a == b == c"
           ],
@@ -95,7 +95,7 @@ newSyntaxExprTests =
             "match (x, y) { case ((a, b)) {} }",
             "match (x) { case (a, b,) {} }",
             "match (x) { default {} }",
-            "match (x) { case comptime (lam (x) { return x; })(1) {} }"
+            "match (x) { case comptime (lambda (x) { return x; })(1) {} }"
           ],
       testGroup "removed or invalid statements" $
         map
@@ -186,7 +186,7 @@ newSyntaxExprTests =
             "{ { f() } }",
             "{ x = 1 }",
             "{ return 1 }",
-            "{ let f = lam () { 1 }; f() }"
+            "{ let f = lambda () { 1 }; f() }"
           ],
       testCase "bitwise complement binds before multiplication" $
         case parse expression "~x * y + z & w" of

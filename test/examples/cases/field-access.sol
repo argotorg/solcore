@@ -8,11 +8,11 @@ contract PoC {
         return b;
     }
 
-    function init(foo: bool) public returns (()) {
+    function init(foo: bool) public returns (unit) {
        field = 2;
     }
 
-    function main () public returns (()) {
+    function main () public returns (unit) {
 
     }
 }

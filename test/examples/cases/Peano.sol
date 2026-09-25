@@ -8,5 +8,5 @@ function natInd (step : function((Nat, Nat)) returns (Nat), v : Nat, n : Nat) re
 }
 
 function add(n : Nat, m : Nat) returns (Nat) {
-  return natInd (lam (x, acc) {return Nat.Succ(acc) ; }, m, n);
+  return natInd (lambda (x, acc) {return Nat.Succ(acc) ; }, m, n);
 }

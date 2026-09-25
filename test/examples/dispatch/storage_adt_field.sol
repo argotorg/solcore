@@ -27,11 +27,11 @@ contract C {
         assert(StorageSize.size(@Option<Triple>) == 4);
     }
 
-    function setValue(v : uint256) public returns (()) {
+    function setValue(v : uint256) public returns (unit) {
         someValue = Option.Some(v);
     }
 
-    function clearValue() public returns (()) {
+    function clearValue() public returns (unit) {
         someValue = Option.None;
     }
 
@@ -49,7 +49,7 @@ contract C {
         } }
     }
 
-    function setTriple(a : uint256, b : uint256, c : uint256) public returns (()) {
+    function setTriple(a : uint256, b : uint256, c : uint256) public returns (unit) {
         triple = Triple(a, b, c);
     }
 
@@ -60,11 +60,11 @@ contract C {
     }
 
     // Nested ADT: Option(Triple).
-    function setSomeTriple(a : uint256, b : uint256, c : uint256) public returns (()) {
+    function setSomeTriple(a : uint256, b : uint256, c : uint256) public returns (unit) {
         someTriple = Option.Some(Triple(a, b, c));
     }
 
-    function clearSomeTriple() public returns (()) {
+    function clearSomeTriple() public returns (unit) {
         someTriple = Option.None;
     }
 

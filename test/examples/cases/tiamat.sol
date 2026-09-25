@@ -15,7 +15,7 @@ enum UIP<m, idx, member> { UIP(m, idx) }
 // Typed Index (access) Proxy
 enum TIP<m, idx, member> { TIP(m, idx, Proxy<member>) }
 
-function setbal(ref: storage<dict<address, word>> , src : address, amt: word) returns (()) {
+function setbal(ref: storage<dict<address, word>> , src : address, amt: word) returns (unit) {
   /* Based on inference:
     ref : storage(dict(address, word))
     => ref[src] : storage(word)  assuming src is of the right type
@@ -24,7 +24,7 @@ function setbal(ref: storage<dict<address, word>> , src : address, amt: word) re
   Assign.assign(LVA.acc(tip), amt);
 }
 
-function setAllowance(ref: storage<dict<address, dict<address, word>>>, owner : address, spender : address, amt : word) returns (()) {
+function setAllowance(ref: storage<dict<address, dict<address, word>>>, owner : address, spender : address, amt : word) returns (unit) {
 
   let tip1 : TIP<storage<dict<address, dict<address, word>>>, address, dict<address, word>>
            = TIP(ref, owner, @dict<address, word>);
@@ -81,7 +81,7 @@ impl<index, member> LVA<UIP<storage<dict<index, member>>, index, member>, storag
 
 trait StorageType<self> {
     function sload(ptr:word) returns (self);
-    function store(ptr:word, value:self) returns (());
+    function store(ptr:word, value:self) returns (unit);
 }
 
 impl StorageType<word> {
@@ -92,7 +92,7 @@ impl StorageType<word> {
         }
         return r;
     }
-    function store(ptr:word, value:word) returns (()) {
+    function store(ptr:word, value:word) returns (unit) {
         assembly {
             sstore(ptr, value)
         }
@@ -107,12 +107,12 @@ impl<index, member> RVA<TIP<storage<dict<index, member>>, index, member>, member
 }
 
 trait Assign<lhs, rhs> {
-    function assign(l:lhs, r:rhs) returns (());
+    function assign(l:lhs, r:rhs) returns (unit);
 }
 
 
 impl<a> Assign<storage<a>, a> where a: StorageType {
-    function assign(l:storage<a>, r:a) returns (()) {
+    function assign(l:storage<a>, r:a) returns (unit) {
       StorageType.store(saddr(l), r);
     }
 }
