@@ -133,6 +133,7 @@ dispatches =
     "Files for dispatch cases"
     [ runDispatchTest "basic.sol",
       runDispatchTest "field_init.sol",
+      runDispatchTest "light_switch.sol",
       runDispatchTest "assembly.sol",
       runDispatchTest "asm_subst.sol",
       runDispatchTest "stringid.sol",
