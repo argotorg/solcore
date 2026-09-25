@@ -1490,6 +1490,28 @@ checkInstance idef@(Instance d vs predCtx n ts t funs) =
       then addDefaultInstance n ninst
       else addInstance n ninst
 
+checkInstanceSuperclasses :: Instance Name -> TcM ()
+checkInstanceSuperclasses idef@(Instance _ _ predCtx n ts t _) = do
+  trustedImported <- isTrustedImportedInstance idef
+  unless trustedImported $ do
+    cinfo <- askClassInfo n `wrapError` idef
+    let sups = supers cinfo
+    unless (null sups) $ do
+      tExp <- maybeExpandSynonym t
+      tsExp <- mapM maybeExpandSynonym ts
+      predCtxExp <- mapM expandPredSynonyms predCtx
+      -- Substitute the class's type variables by this instance's arguments and
+      -- ask each resulting superclass predicate to be entailed by the
+      -- instance's own context plus every registered instance.
+      sub <- match (classpred cinfo) (InCls n tExp tsExp) `wrapError` idef
+      ctable <- getClassEnv
+      itable <- getInstEnv
+      givens <- nub <$> superPredsM ctable predCtxExp
+      let wanted = apply sub sups
+      unsolved <- filterM (\p -> not <$> entailM ctable itable givens p) wanted
+      unless (null unsolved) $
+        missingSuperclassError idef n unsolved
+
 maybeExpandSynonym :: Ty -> TcM Ty
 maybeExpandSynonym (TyCon n ts) = do
   ts' <- mapM maybeExpandSynonym ts
@@ -2260,6 +2282,22 @@ rename t =
    in insts s t
 
 -- errors
+
+missingSuperclassError :: Instance Name -> Name -> [Pred] -> TcM a
+missingSuperclassError idef n unsolved =
+  tcDiagnosticErrorAtSource
+    "SC0233"
+    ("instance does not satisfy the superclass constraints of trait '" ++ pretty n ++ "'")
+    idef
+    ("this instance requires " ++ missing)
+    [ "trait '"
+        ++ pretty n
+        ++ "' has a `where` clause that every instance must satisfy, but no instance provides "
+        ++ missing
+    ]
+    ["add the missing instance(s): " ++ missing]
+  where
+    missing = intercalate ", " (map pretty unsolved)
 
 classArityError :: (Pretty a) => Name -> ClassInfo -> a -> TcM ()
 classArityError n cinfo v =

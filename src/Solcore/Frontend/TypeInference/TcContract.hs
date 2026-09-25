@@ -97,6 +97,10 @@ tcTopDeclChecks topDeclChecks =
     csExpanded <- everywhereMButSpans (mkM (expandTyM st)) cs
     mapM_ checkTopDecl (filter isClass csExpanded)
     mapM_ checkTopDecl (filter (not . isClass) csExpanded)
+    -- Every instance must satisfy its trait's superclass constraints (the
+    -- trait's `where` clause).  Run this once all instances are registered, so
+    -- it does not depend on the order they are declared in.
+    mapM_ checkInstanceSuperclasses [is | TInstDef is <- csExpanded]
     -- Pre-register annotated top-level function signatures in ctx so that
     -- forward references introduced during type checking can resolve regardless
     -- of binding-group order. In particular, struct field access `s.x` is
