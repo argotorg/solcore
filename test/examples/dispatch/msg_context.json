@@ -1,0 +1,67 @@
+{
+  "msg_context": {
+    "bytecode": "",
+    "contract": "MsgContext",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor",
+        "output": {
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "sender()(address) - returns the caller",
+          "calldata": "67e404ce",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000001212121212121212121212121212120000000012",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "deployer()(address) - msg_sender() in the constructor is the deployer",
+          "calldata": "d5f39488",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000001212121212121212121212121212120000000012",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "value()(uint256) - returns the value sent",
+          "calldata": "3fa4f245",
+          "value": "42"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "value()(uint256) - zero when no value is sent",
+          "calldata": "3fa4f245",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}

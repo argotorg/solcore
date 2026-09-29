@@ -16,6 +16,7 @@ bash ./contest.sh test/examples/dispatch/miniERC20.json
 bash ./contest.sh test/examples/dispatch/Revert.json
 bash ./contest.sh test/examples/dispatch/ownable.json
 bash ./contest.sh test/examples/dispatch/hashes.json
+bash ./contest.sh test/examples/dispatch/msg_context.json
 bash ./contest.sh test/examples/dispatch/payable.json
 bash ./contest.sh test/examples/dispatch/payable_ctor.json
 bash ./contest.sh test/examples/dispatch/nonpayable_ctor.json

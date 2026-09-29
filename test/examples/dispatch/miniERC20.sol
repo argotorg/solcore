@@ -1,14 +1,6 @@
 import * from std;
 import * from std.dispatch;
 
-function caller() returns (address) {
-  let res: word;
-  assembly {
-     res := caller()
-  }
-  return address(res);
-}
-
 contract MiniERC20 {
   name : string;
   symbol : string;
@@ -21,7 +13,7 @@ contract MiniERC20 {
   constructor(name_ : memory<string>, symbol_ : memory<string>, totalSupply_:uint256) {
     name = name_;
     symbol = symbol_;
-    owner = caller();
+    owner = msgSender();
     decimals = 18;
     mint(totalSupply_);
   }
@@ -57,11 +49,11 @@ contract MiniERC20 {
   }
 
   function transfer(dst : address, amt : uint256) public returns (bool) {
-      return transferFrom(caller(), dst, amt);
+      return transferFrom(msgSender(), dst, amt);
   }
 
   function transferFrom(src:address, dst:address, amt:uint256) public returns (bool) {
-     let msg_sender = caller();
+     let msg_sender = msgSender();
      require(balances[src] >= amt, "transferFrom: insufficient balance");
 
      if (src != msg_sender && allowance[src][msg_sender] != ((lam (syntaxValue: uint256) -> uint256 { return syntaxValue; })(Num.maxVal()))) {
@@ -75,7 +67,7 @@ contract MiniERC20 {
   }
 
   function approve(usr: address, amt: uint256) public returns (bool) {
-      let msg_sender = caller();
+      let msg_sender = msgSender();
       allowance[msg_sender][usr] = amt;
       // emit Approval(msg.sender, usr, amt);
       return true;
@@ -84,12 +76,12 @@ contract MiniERC20 {
 
   // testing
   function getMyBalance() public returns (uint256) {
-    return balances[caller()];
+    return balances[msgSender()];
   }
 
   function test() public returns (uint256) {
       approve(address(0), 10);
-      transferFrom(caller(), address(0), 958);
+      transferFrom(msgSender(), address(0), 958);
       return getMyBalance();
   }
 

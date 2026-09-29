@@ -137,6 +137,7 @@ dispatches =
       runDispatchTest "stringid.sol",
       runDispatchTest "storage.sol",
       runDispatchTest "miniERC20.sol",
+      runDispatchTest "msg_context.sol",
       runDispatchTest "Revert.sol",
       runDispatchTest "hashes.sol",
       runDispatchTest "eip712.sol",
