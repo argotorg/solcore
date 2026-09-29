@@ -1,19 +1,11 @@
 import * from std;
-import {caller as caller_, callvalue as callvalue_, selfbalance, gas, call} from std.opcodes;
+import {selfbalance, gas, call} from std.opcodes;
 import * from std.dispatch;
 
 // Forward `wad` wei to `dst` via a zero-data CALL and revert on failure.
 function sendValue(dst: address, wad: uint256) returns (()) {
     let ret = call(gas(), Typedef.rep(dst), Typedef.rep(wad), 0, 0, 0, 0);
     require(ret != 0, Error(0x90b8ec18)); // TransferFailed()
-}
-
-function caller() returns (address) {
-    return address(caller_());
-}
-
-function callvalue() returns (uint256) {
-    return uint256(callvalue_());
 }
 
 // Based on https://github.com/gnosis/canonical-weth/blob/master/contracts/WETH9.sol
@@ -27,12 +19,12 @@ contract WETH9 {
     // --- ETH <-> WETH ---
 
     function deposit() public payable returns (()) {
-        let sender = caller();
-        balances[sender] = balances[sender] + callvalue();
+        let sender = msgSender();
+        balances[sender] = balances[sender] + msgValue();
     }
 
     function withdraw(wad: uint256) public returns (()) {
-        let sender = caller();
+        let sender = msgSender();
         require(balances[sender] >= wad, Error(0xf4d678b8)); // InsufficientBalance()
         balances[sender] = balances[sender] - wad;
         sendValue(sender, wad);
@@ -54,17 +46,17 @@ contract WETH9 {
     }
 
     function approve(usr: address, wad: uint256) public returns (bool) {
-        let sender = caller();
+        let sender = msgSender();
         allowance[sender][usr] = wad;
         return true;
     }
 
     function transfer(dst: address, wad: uint256) public returns (bool) {
-        return transferFrom(caller(), dst, wad);
+        return transferFrom(msgSender(), dst, wad);
     }
 
     function transferFrom(src: address, dst: address, wad: uint256) public returns (bool) {
-        let sender = caller();
+        let sender = msgSender();
         require(balances[src] >= wad, Error(0xf4d678b8)); // InsufficientBalance()
 
         if (src != sender && allowance[src][sender] != ((lam (syntaxValue: uint256) -> uint256 { return syntaxValue; })(maxVal()))) {
@@ -78,7 +70,7 @@ contract WETH9 {
 
     // Plain ETH transfers (no calldata, just value) auto-wrap into WETH.
     fallback()  payable  {
-        let sender = caller();
-        balances[sender] = balances[sender] + callvalue();
+        let sender = msgSender();
+        balances[sender] = balances[sender] + msgValue();
     }
 }
