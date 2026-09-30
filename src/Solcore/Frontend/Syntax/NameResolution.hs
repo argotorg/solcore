@@ -1309,11 +1309,13 @@ resolveExp (S.ExpTypeInfo cn field)
   | field == Name "publicMethods" =
       pure (Call Nothing (publicMethodsTagName cn) [])
   | otherwise =
-      throwError $
-        unlines
-          [ "Unknown type(...) field: " ++ pretty field,
-            "  only `publicMethods` is currently supported"
-          ]
+      diagnosticErrorAtName
+        "SC0126"
+        ("unknown type(...) field: " ++ pretty field)
+        field
+        "unknown field"
+        ["only `publicMethods` is currently supported"]
+        []
 
 resolveVariableReference :: Maybe (Exp Name) -> Name -> ResolveM (Exp Name)
 resolveVariableReference me'@(Just (Var qualifier)) n = do
