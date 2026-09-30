@@ -15,10 +15,10 @@
 --   @Proxy((Method(...), (Method(...), ... ())))@
 --
 -- Each element carries the very same @Method(name,payability,args,rets,fn)@
--- typing consumed by @Selector.compute@ (see @std/dispatch.solc@), so no
+-- typing consumed by @Selector.compute@ (see @std/dispatch.sol@), so no
 -- selector hashing leaks into the compiler.  Walking that tuple — counting the
 -- methods (@length@) and XOR-folding their selectors into an interface id — is
--- the @PublicMethods@ type class in @std/dispatch.solc@; the compiler only
+-- the @PublicMethods@ type class in @std/dispatch.sol@; the compiler only
 -- exposes the method list, never the iteration or hashing.
 --
 -- This must run BEFORE contract dispatch generation, which produces the
@@ -69,7 +69,7 @@ isTagName _ = False
 
 -- | Generate the helper that yields a contract's public-method tuple as a
 -- @Proxy@ type token.  The tuple is right-nested and terminated by @()@ so the
--- @PublicMethods@ instances in @std/dispatch.solc@ only need a @()@ base case
+-- @PublicMethods@ instances in @std/dispatch.sol@ only need a @()@ base case
 -- and an @(n, m)@ recursive case (no special single-method case).
 genPublicMethodsFn :: Contract Name -> TopDecl Name
 genPublicMethodsFn c@(Contract cname _ _) =
@@ -80,14 +80,17 @@ genPublicMethodsFn c@(Contract cname _ _) =
     proxyTy = TyCon "Proxy" [methodsTuple]
 
     sig =
-      Signature
+      SignatureWithReturnNames
         { sigVars = [],
           sigContext = [],
           sigName = publicMethodsTagName cname,
           sigParams = [],
           sigRetComptime = False,
           sigReturn = Just proxyTy,
-          sigPayable = False
+          sigPayable = False,
+          sigReturnNames = [],
+          sigReturnItems = [],
+          sigModifiers = []
         }
 
     -- return Proxy : Proxy((Method(...), (Method(...), ... ())));
