@@ -11,10 +11,13 @@ export {
   MethodLevelCallvalueCheck,
   NonPayable,
   Payable,
+  PublicMethods,
   RunContract,
   RunDispatch,
   Selector,
   SigString,
+  calculateInterfaceId,
+  calculateSelector,
   do_exec,
   fallback_default_implementation,
   selector_matches,
@@ -115,6 +118,56 @@ impl<name, payability, args, rets, fn> Selector<Method<name, payability, args, r
         let hash = keccakLit(sigStr(@name)  + "(" + sigStr(@args) + ")");
         return bytes4(shr(224, hash));
     }
+}
+
+// --- Interface Id ---
+
+// The ABI selector for a single method type. This is the same encoding used by
+// `Selector.compute`; it is exposed as a standalone function so callers can
+// read a method's selector directly.
+function calculateSelector<ty>(prx : Proxy<ty>) returns (bytes4) where ty: Selector {
+    return Selector.compute(prx);
+}
+
+// `type(C).publicMethods` hands back a `Proxy` over the contract's public
+// methods, encoded as a right-nested tuple terminated by `()`:
+//
+//   Proxy<(Method<...>, (Method<...>, ... ()))>
+//
+// Each element is a `Method<name, payability, args, rets, fn>` (the same typing
+// `Selector.compute` consumes), so its selector is recovered from the type with
+// no hashing in the compiler.
+//
+// The tuple is heterogeneous: every method is a distinct `Method<...>` type, so
+// it cannot be indexed by a runtime `word`. `PublicMethods` therefore walks it
+// structurally (a `()` base case and a `(Method<...>, m)` recursive case,
+// mirroring `RunDispatch`), XOR-folding the per-method selectors into an
+// interface id.
+trait PublicMethods<ty> {
+    function interfaceId(p : Proxy<ty>) returns (bytes4);
+}
+
+// Base case: the `()` tuple terminator, no methods left.
+impl PublicMethods<()> {
+    function interfaceId(p : Proxy<()>) returns (bytes4) {
+        return 0;
+    }
+}
+
+// Recursive case: a head `Method<...>` (same typing and constraints
+// `Selector.compute` uses) followed by the remaining methods `m`.
+impl<name, payability, args, rets, fn, m> PublicMethods<(Method<name, payability, args, rets, fn>, m)> where name: SigString, args: SigString, m: PublicMethods {
+    function interfaceId(p : Proxy<(Method<name, payability, args, rets, fn>, m)>) returns (bytes4) {
+        let head : bytes4 = Selector.compute(@Method<name, payability, args, rets, fn>);
+        let rest : bytes4 = PublicMethods.interfaceId(@m);
+        return bytes4(Typedef.rep(head) ^ Typedef.rep(rest));
+    }
+}
+
+// Compute an ERC-165 style interface id by XOR-folding the public-method
+// selectors. Mirrors Solidity's `type(I).interfaceId`.
+function calculateInterfaceId<ty>(methods : Proxy<ty>) returns (bytes4) where ty: PublicMethods {
+    return PublicMethods.interfaceId(methods);
 }
 
 // --- Method Execution ---

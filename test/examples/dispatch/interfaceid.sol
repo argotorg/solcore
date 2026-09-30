@@ -1,8 +1,8 @@
-import std.{*};
-import std.dispatch.{*};
+import * from std;
+import * from std.dispatch;
 
 // Demonstrates the `type(C).publicMethods` primitive together with
-// `calculateInterfaceId` from std/dispatch.solc, replicating Solidity's
+// `calculateInterfaceId` from std/dispatch.sol, replicating Solidity's
 // `type(I).interfaceId`.
 //
 // The interface id is the XOR of the selectors of every public method:
@@ -11,15 +11,15 @@ import std.dispatch.{*};
 //   interfaceId()  -> 0xa64d0cd4
 //   XOR            -> 0xed9d1481
 contract InterfaceId {
-  public function foo(x : uint256) -> uint256 {
+  function foo(x : uint256) public returns (uint256) {
     return x;
   }
 
-  public function bar(a : address) -> uint256 {
+  function bar(a : address) public returns (uint256) {
     return 0;
   }
 
-  public function interfaceId() -> bytes4 {
+  function interfaceId() public returns (bytes4) {
     return calculateInterfaceId(type(InterfaceId).publicMethods);
   }
 }
