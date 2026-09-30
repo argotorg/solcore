@@ -14,6 +14,32 @@
 
       {
         "input": {
+            "comment": "supportsInterface(0xc751f4a2) - contract's own interface id (XOR of get_zero_hash/get_deposit_root/get_deposit_count/deposit/supportsInterface selectors); bytes4 arg is right-aligned",
+            "calldata": "01ffc9a700000000000000000000000000000000000000000000000000000000c751f4a2",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "0000000000000000000000000000000000000000000000000000000000000001",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
+            "comment": "supportsInterface(0x00000000) - non-matching interface id returns false",
+            "calldata": "01ffc9a70000000000000000000000000000000000000000000000000000000000000000",
+            "value": "0"
+        },
+        "kind": "call",
+        "output": {
+            "returndata": "0000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success"
+        }
+      },
+
+      {
+        "input": {
             "comment": "get_zero_hash(0)",
             "calldata": "43ca34020000000000000000000000000000000000000000000000000000000000000000",
             "value": "0"
