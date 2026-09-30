@@ -124,7 +124,6 @@ genMainFn addMain c@(ContractWithKind ContractKind cname tys cdecls)
               Var fname
             ]
     mkMethod s = error $ "Internal Error: contract methods must be fully typed: " <> show s
-
 genMainFn _ c = c
 
 externallyVisible :: Bool -> Signature a -> Bool
