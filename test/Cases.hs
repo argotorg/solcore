@@ -652,6 +652,7 @@ cases =
       runTestForFileWith dispatchOpt "storage-adt-recursive-ok.sol" caseFolder,
       runTestExpectingFailureWith dispatchOpt "storage-adt-recursive-fail.sol" caseFolder,
       runTestExpectingFailureWith dispatchOpt "storage-adt-mapping-field-fail.sol" caseFolder,
+      runTestExpectingFailureWith dispatchOpt "new-nested-array-fail.sol" caseFolder,
       runTestExpectingFailure "array-elem-no-storagecopy.sol" caseFolder,
       runTestExpectingFailure "array-push-no-canstore.sol" caseFolder,
       runTestExpectingFailure "arraylit-mixed-types.sol" caseFolder,

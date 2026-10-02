@@ -1007,18 +1007,16 @@ enum DynArray<t> {}
 
 // Layout: the length lives at `loc`, so element i lives at `loc + 32 + i*32`.
 // An index is in bounds when i < length.
+// Both element access paths route through LValueIdxAccess.lookup below, so the
+// bounds check and the `loc + 32 + i*32` address arithmetic live in exactly one
+// place. lookup returns the element's cell as a memory<t>; CanStore<memory<t>, t>
+// turns the load/store into the mload/mstore these used to do inline.
 impl<t> IndexAccess<memory<DynArray<t>>, t> where t: Typedef<word> {
     function get(ptr : memory<DynArray<t>>, i : uint256) returns (t) {
-        let i_: word = Typedef.rep(i);
-        let loc : word = Typedef.rep(ptr);
-        if (i_ >= mload(loc)) { out_of_bounds(); }
-        return Typedef.abs(mload(loc + 32 + (i_ * 32)));
+        return CanStore.load(LValueIdxAccess.lookup((ptr, i)));
     }
     function set(arr : memory<DynArray<t>>, i : uint256, val : t) returns (()) {
-        let i_ : word = Typedef.rep(i);
-        let loc : word = Typedef.rep(arr);
-        if (i_ >= mload(loc)) { out_of_bounds(); }
-        mstore(loc + 32 + (i_ * 32), Typedef.rep(val));
+        CanStore.store(LValueIdxAccess.lookup((arr, i)), val);
     }
 }
 
@@ -1039,6 +1037,14 @@ function arrayLitInit<t>(arr : memory<DynArray<t>>, i : uint256, v : t) returns 
 }
 
 function allocateDynamicArray<t>(prx : Proxy<t>, length : word) returns (memory<DynArray<t>>) {
+    // Reject lengths whose byte footprint would overflow a 256-bit word. Without
+    // this, (length + 1) * 32 wraps around and a tiny allocation is handed back
+    // while the length word claims a huge array, letting an "in bounds" index
+    // write past the allocation. div(not_(0), 32) is the largest word count whose
+    // (count * 32) still fits in 256 bits, and the array needs length + 1 words
+    // (the length prefix plus the elements), so length must stay below it.
+    if (length >= div(not_(0), 32)) { out_of_bounds(); }
+
     // size of allocation in bytes
     let sz : word = (length + 1) * 32;
 
@@ -1057,10 +1063,13 @@ function allocateDynamicArray<t>(prx : Proxy<t>, length : word) returns (memory<
 // Solidity semantics. The length is fixed once created (memory arrays are not
 // resizable). Word-sized elements only.
 function newArray<t>(n : uint256) returns (memory<DynArray<t>>)  where t: Typedef<word> {
-    let len : word = Typedef.rep(n);
-    let p : word = allocate_zeroed_memory((len + 1) * 32);
-    mstore(p, len);
-    return Typedef.abs(p);
+    // Same allocation as an array literal (allocateDynamicArray), so the
+    // oversize-length guard -- and thus the overflow fix -- lives in one place.
+    // The elements are left at the EVM's default of zero rather than explicitly
+    // zeroed: the allocator only ever bumps the free-memory pointer, so freshly
+    // reserved memory has never been written and already reads as zero.
+    let prx : Proxy<t>;
+    return allocateDynamicArray(prx, Typedef.rep(n));
 }
 
 // Proxy-fixed variant: the element type is pinned by the Proxy<t> argument.
@@ -2510,9 +2519,10 @@ impl<t, t_decoded, i> RValueIdxAccess<(calldata<array<t>>, i), t_decoded> where 
 // reference is a memory<t> pointer to the element word (store = mstore).
 impl<t, i> RValueIdxAccess<(memory<DynArray<t>>, i), t> where t: Typedef<word>, i: Typedef<word> {
   function lookup(xi : (memory<DynArray<t>>, i)) returns (t) {
-    match (xi ) {
-      case (x, j) { return IndexAccess.get(x, uint256(Typedef.rep(j)));
-    } }
+    // Read through the same bounds-checked cell lookup as the write path (and as
+    // the storage-array instance above): the single bound lives in
+    // LValueIdxAccess.lookup.
+    return CanStore.load(LValueIdxAccess.lookup(xi));
   }
 }
 

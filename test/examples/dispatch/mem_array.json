@@ -31,6 +31,11 @@
         "input": { "comment": "setGet(2,5,1) -> revert (write out of bounds)", "calldata": "2b9afd0a000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000001", "value": "0" },
         "kind": "call",
         "output": { "status": "failure", "returndata": "b4120f14" }
+      },
+      {
+        "input": { "comment": "newLen(2^251) -> revert (oversized length: (n+1)*32 would overflow)", "calldata": "65a5eebe0800000000000000000000000000000000000000000000000000000000000000", "value": "0" },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "b4120f14" }
       }
     ]
   }

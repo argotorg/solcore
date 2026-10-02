@@ -71,11 +71,11 @@ diagnosticCliTests =
       testCase "missing parameter annotation fails during parsing" $
         expectFailure
           ["--root", "test/diagnostics", "--file", "test/diagnostics/missing-signature.sol", "--no-specialise"]
-          [ "error[SC0001]: parse error",
+          [ "error[SC0001]: named function parameter requires an explicit type",
             "  --> <cwd>/test/diagnostics/missing-signature.sol:1:19",
             "  |",
             "1 | function foo(value) {",
-            "  |                   ^ unexpected token"
+            "  |                   ^ not allowed here"
           ],
       testCase "polymorphic type error uses signature span" $
         expectFailure
