@@ -1,6 +1,5 @@
 import * from std;
 import * from std.dispatch;
-import {caller} from std.opcodes;
 pragma no-patterson-condition ;
 pragma no-coverage-condition ;
 pragma no-bounded-variable-condition ;
@@ -64,6 +63,6 @@ contract AbiEncodeTypes {
   // --- tuple ---
   function encTuple() public returns (memory<bytes>) {
     let s: memory<string> = Str.fromString("abc");
-    return abi_encode((uint256(123), (s, (true, address(caller())))));
+    return abi_encode((uint256(123), (s, (true, msgSender()))));
   }
 }

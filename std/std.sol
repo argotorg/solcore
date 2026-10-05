@@ -1,4 +1,4 @@
-import {add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert_, invalid} from std.opcodes;
+import {add, sub, mul, div, mod, addmod as addmod_, mulmod as mulmod_, and as and_, or as or_, xor as xor_, shl, shr, eq, not as not_, gt as gt_, iszero, keccak256, mstore, mload, mcopy, sstore, sload, gas, caller as caller_, callvalue as callvalue_, calldataload, calldatacopy, returndatasize, returndatacopy, log1 as log1_, call, staticcall, revert_, invalid} from std.opcodes;
 
 pragma no-patterson-condition ABIEncode, Num, Array, ArrayPush, Eq, Ord;
 pragma no-coverage-condition ABIDecode, MemoryType, Array, ArrayPush, RValueIdxAccess;
@@ -104,6 +104,8 @@ export {
   memory(*),
   memory_ref,
   minWord,
+  msgSender,
+  msgValue,
   mulmod,
   ne,
   not,
@@ -2725,6 +2727,18 @@ function ecrecover(hash: bytes32, v: uint256, r: bytes32, s: bytes32) returns (a
 //   keccak256(abi.encode(uint256(keccak256(bytes(id))) - 1)) & ~bytes32(uint256(0xff))
 function erc7201(comptime id: string) returns (comptime<bytes32>) {
     return bytes32(keccakWordLit(keccakLit(id) - 1) & ~0xff);
+}
+
+// --- Message context ---
+
+// The address of the direct caller of the current call.
+function msgSender() returns (address) {
+    return address(caller_());
+}
+
+// The amount of wei sent with the current call.
+function msgValue() returns (uint256) {
+    return uint256(callvalue_());
 }
 
 function raw_call<a>(target: address, value: uint256, payload: a) returns ((bool, memory<bytes>))  where a: MemorySize, a: MemoryPointer {
