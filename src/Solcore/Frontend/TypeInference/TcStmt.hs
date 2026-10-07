@@ -1239,10 +1239,18 @@ correctName n@(Name s) =
 extSignature :: Signature Name -> TcM ()
 extSignature sig@(Signature _ _ n _ _ _ _) =
   do
+    -- Qualify the name with the enclosing contract (if any) before the
+    -- duplicate check, so that a method `f` in contract `A` is recorded as `A.f`
+    -- rather than the bare `f`. Otherwise two contracts in the same file, each
+    -- with a method of the same name, would be reported as duplicates even
+    -- though each is local to its own contract. Top-level functions have no
+    -- enclosing contract, so `correctName` leaves them unqualified and their
+    -- duplicate detection is unchanged.
+    n' <- correctName n
     te <- gets directCalls
     -- checking if the function is previously defined
-    when (n `elem` te) (duplicatedFunDef n) `wrapError` sig
-    addFunctionName n
+    when (n' `elem` te) (duplicatedFunDef n') `wrapError` sig
+    addFunctionName n'
 
 -- typing instance
 
