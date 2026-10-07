@@ -330,6 +330,8 @@ cases =
       runTestForFile "bal.sol" caseFolder,
       runTestExpectingFailure "BadInstance.sol" caseFolder,
       runTestForFile "BoolNot.sol" caseFolder,
+      runTestForFile "two-contracts-same-method.sol" caseFolder,
+      runTestForFile "top-level-and-contract-fn.sol" caseFolder,
       runTestExpectingFailure "bound-minimal.sol" caseFolder,
       runTestExpectingFailure "bound-only-test.sol" caseFolder,
       runTestForFile "bound-merge-case.sol" caseFolder,
