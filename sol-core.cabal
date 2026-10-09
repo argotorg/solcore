@@ -70,6 +70,7 @@ library
       Solcore.Desugarer.DeriveClass
       Solcore.Desugarer.DeriveGeneric
       Solcore.Desugarer.FieldAccess
+      Solcore.Desugarer.FieldInitialization
       Solcore.Desugarer.StructProjection
       Solcore.Desugarer.IfDesugarer
       Solcore.Desugarer.IndirectCall

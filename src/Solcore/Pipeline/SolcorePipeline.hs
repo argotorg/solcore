@@ -25,6 +25,7 @@ import Solcore.Desugarer.DecisionTreeCompiler (matchCompiler, warningDiagnostic)
 import Solcore.Desugarer.DeriveClass (deriveClassTopDecls)
 import Solcore.Desugarer.DeriveGeneric (collectDataDefs, deriveGenericTopDecls)
 import Solcore.Desugarer.FieldAccess (fieldDesugarTopDecls)
+import Solcore.Desugarer.FieldInitialization (checkFieldInitialization)
 import Solcore.Desugarer.IfDesugarer (ifDesugarer)
 import Solcore.Desugarer.IndirectCall (indirectCallTopDecls)
 import Solcore.Desugarer.IntLiteralDesugar (desugarIntLiterals)
@@ -838,6 +839,19 @@ prepareInferenceDeclsForTypeInference opts emitOutput imps inferenceDecls = do
       timeItNamed
         | emitOutput = optTimeItNamed opts
         | otherwise = \_ action -> action
+
+  -- Reject algebraic-data-type contract fields that are never initialised
+  -- (neither by a field initializer nor by a constructor assignment): such a
+  -- field silently zero-initialises to an unstated constructor.  Runs on the
+  -- raw Name AST, before field-access desugaring rewrites constructor writes.
+  ExceptT $
+    pure $
+      checkFieldInitialization
+        (moduleInferenceTopDecls inferenceDecls)
+        [ moduleInferenceDeclTopDecl d
+        | d <- inferenceDecls,
+          moduleInferenceDeclSegment d == ModuleLocalDecl
+        ]
 
   -- contract field access desugaring
   let accessed = mapModuleInferenceTopDecls fieldDesugarTopDecls inferenceDecls

@@ -132,7 +132,7 @@ data ContractEnv = CEnv
 type CEM a = ContractEnv -> a
 
 transContract :: Map Name [Name] -> NmContract -> NmContract
-transContract structs c = c {decls = concatMap (flip transCDecl cenv) (Contract.decls c)}
+transContract structs c = c {decls = concatMap (flip transCDecl cenv) (injectFieldInits (Contract.decls c))}
   where
     cenv =
       CEnv
@@ -141,6 +141,23 @@ transContract structs c = c {decls = concatMap (flip transCDecl cenv) (Contract.
           ceLocals = mempty,
           ceStructs = structs
         }
+
+-- Honour field initializers (@f : T = e;@) by turning each into an
+-- assignment @f = e@ run at construction time.  The assignments are prepended
+-- to the contract constructor (so ordinary constructor code can still override
+-- them), and a constructor is synthesised when the contract declares none.
+-- Without this pass a field initializer parses but has no effect.
+injectFieldInits :: [NmContractDecl] -> [NmContractDecl]
+injectFieldInits cdecls
+  | null initStmts = cdecls
+  | any isConstr cdecls = map addInits cdecls
+  | otherwise = cdecls ++ [CConstrDecl (Constructor [] initStmts False)]
+  where
+    initStmts = [FieldAccess Nothing (fieldName f) := e | CFieldDecl f <- cdecls, Just e <- [fieldInit f]]
+    isConstr (CConstrDecl _) = True
+    isConstr _ = False
+    addInits (CConstrDecl cd) = CConstrDecl cd {constrBody = initStmts ++ cd.constrBody}
+    addInits d = d
 
 transCDecl :: NmContractDecl -> CEM [NmContractDecl]
 transCDecl (CFunDecl fd) = do
