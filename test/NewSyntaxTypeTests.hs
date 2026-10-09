@@ -57,8 +57,7 @@ newSyntaxTypeTests =
       testCase "removed type spellings are rejected" $
         mapM_
           (parseFails typeP)
-          [ "word[]",
-            "word[2]",
+          [ "word[2]",
             "word memory",
             "word storage",
             "word calldata",

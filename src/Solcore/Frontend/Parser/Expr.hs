@@ -129,7 +129,35 @@ callOp bp = do
         _ -> ExpApply callee args
 
 atomP :: BodyP -> Parser Exp
-atomP bp = litP <|> lamP bp <|> dotNameP bp <|> proxyP <|> arrayP bp <|> parenP bp <|> nameP bp
+atomP bp = litP <|> lamP bp <|> dotNameP bp <|> proxyP <|> newP bp <|> arrayP bp <|> parenP bp <|> nameP bp
+
+-- Solidity new T[](n): allocate a memory dynamic array of runtime length n.
+-- Desugars to newArrayP(@T, n) (the element type T is pinned by the proxy).
+-- new is parsed contextually (not a reserved word), so a try backtracks when
+-- the shape is not new <arrayType>(expr).
+newP :: BodyP -> Parser Exp
+newP bp =
+  locatedP locatedExp $ do
+    -- Only commit to a `new` expression once we have recognised `new <T[]>`, so
+    -- the surrounding `try` backtracks and `new` can still be an ordinary name.
+    elemT <-
+      try $ do
+        keyword "new"
+        arrTy <- typeP
+        case arrTy of
+          TyCon (Name "memory") [TyCon (Name "DynArray") [elemT]] -> pure elemT
+          _ -> fail "new expects a dynamic array type, e.g. new T[](n)"
+    arg <- parens (exprP bp)
+    -- newArrayP zero-initialises the elements, so the element's default value
+    -- must be a valid value. A memory-reference element -- a nested dynamic array
+    -- (new T[][](n)), or new bytes[](n) / new string[](n) -- would leave every
+    -- element as a null pointer that a later read/write would dereference. Reject
+    -- it here (Solidity either rejects or fully allocates the inner values).
+    case elemT of
+      TyCon (Name "memory") _ ->
+        fail
+          "new T[](n) does not support a memory-reference element type (e.g. new T[][](n) or new bytes[](n)): its elements would be uninitialised null pointers"
+      _ -> pure (ExpName Nothing (Name "newArrayP") [ExpAt elemT, arg])
 
 litP :: Parser Exp
 litP =
