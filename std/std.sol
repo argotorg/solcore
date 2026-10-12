@@ -117,6 +117,7 @@ export {
   revertLit,
   revertEmpty,
   revertWithError,
+  revert_,
   require,
   ridx,
   ripemd160,

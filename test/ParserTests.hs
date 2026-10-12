@@ -1718,8 +1718,9 @@ declarationShellTests =
         parseFails
           topDeclP
           "interface Oracle { function read() external returns (word) { return 0; } }",
-      testCase "interface rejects omitted function visibility is rejected" $
-        parseFails topDeclP "interface Oracle { function read() returns (word); }",
+      testCase "interface accepts a body-less signature with no visibility" $
+        parsesAs topDeclP "interface Oracle { function read() returns (word); }" $
+          TContr (ContractShell InterfaceKind "Oracle" [] [CSignatureDecl True (Signature [] [] "read" [] False (Just word) False)]),
       testCase "interface rejects public function visibility is rejected" $
         parseFails topDeclP "interface Oracle { function read() public returns (word); }",
       testCase "interface rejects private function visibility is rejected" $

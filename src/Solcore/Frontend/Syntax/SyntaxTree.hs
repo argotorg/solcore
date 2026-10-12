@@ -121,6 +121,7 @@ data Contract
   { contractKind :: ContractKind,
     name :: Name,
     tyParams :: [Ty],
+    contractImplements :: [Name],
     decls :: [ContractDecl]
   }
   deriving (Eq, Ord, Show, Data, Typeable)
@@ -129,16 +130,23 @@ data Contract
 -- callers. It builds an ordinary contract, while matching all Solidity-style
 -- declaration shells so existing compiler traversals keep working.
 pattern Contract :: Name -> [Ty] -> [ContractDecl] -> Contract
-pattern Contract n ts ds <- ContractWithKind _ n ts ds
+pattern Contract n ts ds <- ContractWithKind _ n ts _ ds
   where
-    Contract n ts ds = ContractWithKind ContractKind n ts ds
+    Contract n ts ds = ContractWithKind ContractKind n ts [] ds
 
 pattern ContractShell :: ContractKind -> Name -> [Ty] -> [ContractDecl] -> Contract
-pattern ContractShell k n ts ds = ContractWithKind k n ts ds
+pattern ContractShell k n ts ds <- ContractWithKind k n ts _ ds
+  where
+    ContractShell k n ts ds = ContractWithKind k n ts [] ds
+
+pattern ContractWithImplements :: ContractKind -> Name -> [Ty] -> [Name] -> [ContractDecl] -> Contract
+pattern ContractWithImplements k n ts impls ds = ContractWithKind k n ts impls ds
 
 {-# COMPLETE Contract #-}
 
 {-# COMPLETE ContractShell #-}
+
+{-# COMPLETE ContractWithImplements #-}
 
 -- definition of a algebraic data type
 
