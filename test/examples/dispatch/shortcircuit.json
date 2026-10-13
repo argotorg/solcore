@@ -1,0 +1,40 @@
+{
+  "shortcircuit": {
+    "bytecode": "",
+    "contract": "Answer",
+    "tests": [
+      {
+        "input": {
+          "comment": "constructor()",
+          "calldata": "",
+          "value": "0"
+        },
+        "kind": "constructor"
+      },
+      {
+        "input": {
+          "comment": "testor()(uint256) -- rttrue() || absurd(): rhs not evaluated -> 42",
+          "calldata": "ef524b8f",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      },
+      {
+        "input": {
+          "comment": "testand()(uint256) -- rtfalse() && absurd(): rhs not evaluated -> 42",
+          "calldata": "07364c31",
+          "value": "0"
+        },
+        "kind": "call",
+        "output": {
+          "returndata": "000000000000000000000000000000000000000000000000000000000000002a",
+          "status": "success"
+        }
+      }
+    ]
+  }
+}
