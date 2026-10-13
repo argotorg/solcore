@@ -179,12 +179,16 @@ checkExpr (ECall f args) = do
   pure (hsig_ret sig)
 checkExpr (ECond ty cond e1 e2) = do
   tc <- checkExpr cond
-  expectType TBool tc
+  -- expectType TBool tc
+  expectType desugaredBoolType tc
   t1 <- checkExpr e1
   expectType ty t1
   t2 <- checkExpr e2
   expectType ty t2
   pure ty
+
+desugaredBoolType :: Type
+desugaredBoolType = TSum TUnit TUnit
 
 -- Match alternatives
 
