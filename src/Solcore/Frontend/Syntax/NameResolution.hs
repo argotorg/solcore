@@ -1280,13 +1280,13 @@ resolveExp c@(S.ExpNE e1 e2) = do
 resolveExp c@(S.ExpLAnd e1 e2) = do
   e1' <- resolve e1 `wrapError` c
   e2' <- resolve e2 `wrapError` c
-  let false = Con(Name "false") []
+  let false = Con (Name "false") []
   pure (Cond e1' e2' false)
 -- e1 || e2 resolves to if e1 then true else e2
 resolveExp c@(S.ExpLOr e1 e2) = do
   e1' <- resolve e1 `wrapError` c
   e2' <- resolve e2 `wrapError` c
-  let true = Con(Name "true") []
+  let true = Con (Name "true") []
   pure (Cond e1' true e2')
 resolveExp c@(S.ExpLNot e) = do
   e' <- resolve e `wrapError` c
