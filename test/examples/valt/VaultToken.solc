@@ -1,0 +1,105 @@
+import std.{*};
+import std.dispatch.{*};
+import std.opcodes.{caller};   // EVM opcode functions; caller() -> word
+
+// VaultToken: the composition example, written as a single flat contract.
+//
+// In Classic Solidity this is three mixins (Ownable, Pausable, ERC20Base)
+// combined by multiple inheritance, with a single virtual hook `_update`
+// that every token movement routes through, dressed by `whenNotPaused`.
+//
+// Core Solidity has no inheritance and no `super`, so the composition is
+// expressed directly: all the state is declared together in one contract,
+// and the shared hook is an ordinary internal method `update` that the
+// public entry points call. The `whenNotPaused` guard is inlined at the
+// single seam, which is exactly what the linearized override would produce.
+//
+// Two surface details follow what the current backend accepts: `bool` is not
+// storable nor ABI-decodable yet, so the pause flag lives in a `uint256`
+// (0 = running, 1 = paused) and `setPaused` takes that flag; `bool` is still
+// fine as a return type, so `paused()` reports a real `bool`.
+contract VaultToken {
+  owner_       : address;
+  paused_      : uint256;       // 0 = not paused, 1 = paused
+  totalSupply_ : uint256;
+  balances     : mapping(address, uint256);
+
+  constructor(initialSupply : uint256) {
+    owner_  = address(caller());
+    paused_ = uint256(0);
+    // initial mint to the deployer, routed through the same seam
+    update(address(0), address(caller()), initialSupply);
+  }
+
+  // ---- ownership face (the Ownable mixin) ----
+  public function owner() -> address {
+    return owner_;
+  }
+
+  public function transferOwnership(newOwner : address) -> () {
+    requireOwner();
+    owner_ = newOwner;
+  }
+
+  // the onlyOwner guard, shared by every owner-gated entry point
+  function requireOwner() -> () {
+    require(address(caller()) == owner_, Error(0x12b0c500)); // OwnableUnauthorizedAccount()
+  }
+
+  // ---- pause face (the Pausable mixin) ----
+  public function paused() -> bool {
+    return paused_ != uint256(0);
+  }
+
+  public function setPaused(flag : uint256) -> () {
+    requireOwner();
+    paused_ = flag;
+  }
+
+  // ---- ERC-20 face (the ERC20Base mixin) ----
+  public function totalSupply() -> uint256 {
+    return totalSupply_;
+  }
+
+  public function balanceOf(account : address) -> uint256 {
+    return balances[account];
+  }
+
+  public function transfer(to : address, amount : uint256) -> bool {
+    update(address(caller()), to, amount);
+    return true;
+  }
+
+  public function mint(to : address, amount : uint256) -> () {
+    requireOwner();
+    update(address(0), to, amount);
+  }
+
+  // ---- the single seam every movement flows through ----
+  // This is the `_update` hook. In Classic Solidity `VaultToken` overrides it
+  // to add `whenNotPaused` and then calls `super._update`; here the pause check
+  // and the ledger movement live together in the one body the calls reach.
+  function update(from : address, to : address, amount : uint256) -> () {
+    require(paused_ == uint256(0), Error(0x9e87fac8)); // whenNotPaused / Paused()
+    if (from != address(0)) {
+      balances[from] = Num.sub(balances[from], amount);
+    } else {
+      totalSupply_ = Num.add(totalSupply_, amount);
+    }
+    if (to != address(0)) {
+      balances[to] = Num.add(balances[to], amount);
+    } else {
+      totalSupply_ = Num.sub(totalSupply_, amount);
+    }
+    // emit Transfer(from, to, amount); // events are a separate feature
+  }
+
+  // ---- a small self-test exercising the composed behavior ----
+  // mints 100 to the owner, transfers 30 away, and reports the owner balance.
+  // With an initial supply of S the result is S + 100 - 30.
+  public function test() -> uint256 {
+    mint(address(caller()), uint256(100));
+    transfer(address(0xBEEF), uint256(30));
+    return balanceOf(address(caller()));
+  }
+}
