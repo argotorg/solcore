@@ -4,6 +4,10 @@ cabal-dev
 *.md
 build*
 script*
+# `script*` above also matches the tracked `scripts/` source directory, which
+# must ship in the Nix gitignore-filtered source (checks.syntax-migration runs
+# scripts/test_migrate_new_syntax.py). Re-include it.
+!scripts/
 solady*
 *.o
 *.hi
