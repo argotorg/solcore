@@ -1,6 +1,10 @@
 dist
 dist-*
 cabal-dev
+*.md
+build*
+script*
+solady*
 *.o
 *.hi
 *.hie
