@@ -1508,7 +1508,7 @@ impl<tuple> ABIEncode<ABITuple<tuple>> where tuple: ABIEncode, tuple: ABIAttribs
         // pointer in the head, and encode the tuple into the tail
         } case false {
             // store the length of the head in basePtr
-            mstore(basePtr, tail - basePtr);
+            mstore(basePtr + offset, tail - basePtr);
 
             // encode the underlying tuple into the tail
             let headSize = ABIAttribs.headSize(@tuple);
