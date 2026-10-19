@@ -25,6 +25,7 @@ import Data.Set qualified as Set
 import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
+import Solcore.Frontend.Pretty.TreePretty (pretty)
 import Solcore.Frontend.Syntax.Name
 import Solcore.Frontend.Syntax.SyntaxTree
 import Solcore.Primitives.Primitives (arrayLiteralInitName, arrayLiteralNewName, storeArrayLiteralName)
@@ -528,6 +529,7 @@ moduleLocalTypeCheckSurface ::
   Mod.ModuleId ->
   Either String ModuleTypeCheckSurface
 moduleLocalTypeCheckSurface graph modulePath = do
+  checkImportedInstanceOverlaps graph modulePath
   (unit, _sourcePath, importPairs) <- prepareModuleImportContext graph modulePath
   collidingTypeNames <- collidingImportedTypeNames graph importPairs
   importedDecls <-
@@ -2240,6 +2242,67 @@ dedupeImportedInstanceDecls =
       | instanceDeclHeadKey inst `elem` seenHeads = (seenHeads, acc)
       | otherwise = (instanceDeclHeadKey inst : seenHeads, d : acc)
     step (seenHeads, acc) d = (seenHeads, d : acc)
+
+-- The set of modules reachable through 'modulePath''s imports (transitively),
+-- NOT including 'modulePath' itself.
+transitiveImportedModules :: ModuleGraph -> Mod.ModuleId -> Set Mod.ModuleId
+transitiveImportedModules graph root = go Set.empty (deps root)
+  where
+    deps m = Map.findWithDefault [] m (dependencies graph)
+    go seen [] = seen
+    go seen (m : ms)
+      | m `Set.member` seen = go seen ms
+      | otherwise = go (Set.insert m seen) (deps m ++ ms)
+
+-- Reject overlapping instances that become visible together only through
+-- imports.  `dedupeImportedInstanceDecls` collapses instances by head key, so
+-- two DISTINCT non-default instances of the same class for the same type,
+-- defined in two different imported modules, would otherwise be silently
+-- deduped to one (and one implementation chosen at random).  A single instance
+-- re-imported through several paths is defined in only one module, so it is not
+-- flagged.  Runs per module over its transitive import closure, so it fires
+-- exactly for a module that pulls both conflicting definitions into scope, and
+-- not for either defining module on its own.
+checkImportedInstanceOverlaps :: ModuleGraph -> Mod.ModuleId -> Either String ()
+checkImportedInstanceOverlaps graph modulePath =
+  case conflicts of
+    [] -> Right ()
+    _ -> Left (overlapDiagnostic conflicts)
+  where
+    importedModules = Set.toList (transitiveImportedModules graph modulePath)
+    -- head key -> the distinct modules that locally DEFINE a matching instance
+    definers :: Map (Bool, Name, [Ty], Ty) (Set Mod.ModuleId)
+    definers =
+      Map.fromListWith
+        Set.union
+        [ (instanceDeclHeadKey inst, Set.singleton m)
+        | m <- importedModules,
+          Right unit <- [lookupLoadedModule graph m],
+          TInstDef inst <- topDeclsFrom unit,
+          not (instDefault inst)
+        ]
+    conflicts =
+      [ (headKey, Set.toList ms)
+      | (headKey, ms) <- Map.toList definers,
+        Set.size ms >= 2
+      ]
+
+overlapDiagnostic :: [((Bool, Name, [Ty], Ty), [Mod.ModuleId])] -> String
+overlapDiagnostic conflicts =
+  loaderDiagnostic
+    "SC0126"
+    "overlapping instances are not supported"
+    (concatMap note conflicts)
+    [ "remove one of the conflicting instances, or arrange for only one of the "
+        ++ "defining modules to be in scope"
+    ]
+  where
+    note ((_, n, ts, t), ms) =
+      ( "instance '"
+          ++ pretty (InCls n t ts)
+          ++ "' is defined in more than one imported module:"
+      )
+        : ["  - " ++ Mod.moduleIdDisplay m | m <- ms]
 
 instanceDeclHeadKey :: Instance -> (Bool, Name, [Ty], Ty)
 instanceDeclHeadKey inst =
