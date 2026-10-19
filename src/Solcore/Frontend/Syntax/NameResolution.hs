@@ -1276,14 +1276,18 @@ resolveExp c@(S.ExpNE e1 e2) = do
   e1' <- resolve e1 `wrapError` c
   e2' <- resolve e2 `wrapError` c
   pure $ Call Nothing (Name "ne") [e1', e2']
+-- e1 && e2 resolves to `if e1 then e2 else false
 resolveExp c@(S.ExpLAnd e1 e2) = do
   e1' <- resolve e1 `wrapError` c
   e2' <- resolve e2 `wrapError` c
-  pure $ Call Nothing (Name "and") [e1', e2']
+  let false = Con (Name "false") []
+  pure (Cond e1' e2' false)
+-- e1 || e2 resolves to if e1 then true else e2
 resolveExp c@(S.ExpLOr e1 e2) = do
   e1' <- resolve e1 `wrapError` c
   e2' <- resolve e2 `wrapError` c
-  pure $ Call Nothing (Name "or") [e1', e2']
+  let true = Con (Name "true") []
+  pure (Cond e1' true e2')
 resolveExp c@(S.ExpLNot e) = do
   e' <- resolve e `wrapError` c
   pure $ Call Nothing (Name "not") [e']

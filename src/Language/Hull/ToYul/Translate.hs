@@ -66,12 +66,12 @@ genExpr e@(ECond ty cond e1 e2) = do
   (condCode, condLoc) <- genExpr cond
   -- Bools are complex(False ~ inl ()) to get something we can switch on
   let tag = normalizeLoc condLoc
-  debug ["tag = ", show tag]
   (code1, loc1) <- genExpr e1
   (code2, loc2) <- genExpr e2
-  let preCode = resultCode <> condCode <> code1 <> code2
-  let yulDefault = Just (copyLocs resultLoc loc1)
-  let zeroCode = copyLocs resultLoc loc2
+  let preCode = resultCode <> condCode
+  -- False desugars to inl which has tag 0; code2 is the else branch
+  let yulDefault = Just (code1 <> copyLocs resultLoc loc1)
+  let zeroCode = code2 <> copyLocs resultLoc loc2
   let switch = [YSwitch (loadLoc tag) [(YulNumber 0, zeroCode)] yulDefault]
   pure (preCode <> switch, resultLoc)
 genExpr e = error ("genExpr: not implemented for " ++ show e)
@@ -157,7 +157,7 @@ genStmt (SAssembly stmts) = do
 genStmt (SAlloc name typ) = allocVar name typ
 genStmt (SAssign name expr) = hullAssign name expr
 genStmt (SReturn expr) = do
-  debug [">SReturn: ", show expr]
+  -- debug [">SReturn: ", show expr]
   (stmts, loc) <- genExpr expr
   case loc of
     LocUnit -> pure (stmts ++ [YLeave])
