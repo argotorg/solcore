@@ -13,15 +13,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         submodules: recursive
-    - uses: cachix/install-nix-action@v31
+    - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
       with:
         github_access_token: ${{ secrets.GITHUB_TOKEN }}
     - run: nix build .#spec
     - name: Upload spec PDF
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: spec-pdf
         path: result/spec.pdf
