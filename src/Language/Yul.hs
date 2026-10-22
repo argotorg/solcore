@@ -7,6 +7,7 @@ module Language.Yul where
 import Common.Pretty
 import Data.ByteString qualified as BS
 import Data.Generics (Data, Typeable)
+import Data.List (union, (\\))
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Solcore.Frontend.Syntax.Name
@@ -99,6 +100,37 @@ data YulExp
   | YLit YLiteral
   | YMeta String
   deriving (Eq, Ord, Data, Typeable)
+
+-- | Variable reads and writes not bound by this assembly block. Call names
+-- belong to Yul's function namespace, not the captured variable environment.
+freeYulVariables :: YulBlock -> [Name]
+freeYulVariables = block []
+  where
+    block _ [] = []
+    block scope (stmt : rest) =
+      statement scope stmt `union` block (declared stmt `union` scope) rest
+
+    declared (YLet names _) = names
+    declared _ = []
+
+    statement scope (YBlock body) = block scope body
+    statement scope (YFun _ args rets body) = block (args ++ concat rets ++ scope) body
+    statement scope (YLet _ value) = maybe [] (expression scope) value
+    statement scope (YAssign names value) = (names \\ scope) `union` expression scope value
+    statement scope (YIf condition body) = expression scope condition `union` block scope body
+    statement scope (YSwitch value cases def) =
+      expression scope value `union` foldr union [] (map (block scope . snd) cases)
+        `union` maybe [] (block scope) def
+    statement scope (YFor pre condition post body) =
+      let inner = concatMap declared pre `union` scope
+       in block scope pre `union` expression inner condition
+            `union` block inner post `union` block inner body
+    statement scope (YExp value) = expression scope value
+    statement _ _ = []
+
+    expression scope (YIdent name) = [name] \\ scope
+    expression scope (YCall _ args) = foldr union [] (map (expression scope) args)
+    expression _ _ = []
 
 -- | Check the lexical placement rules for Yul control-transfer statements.
 -- A Yul function starts a fresh loop context: @break@/@continue@ cannot target

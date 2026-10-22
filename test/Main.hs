@@ -1,6 +1,7 @@
 module Main where
 
 import Cases
+import ClosureCaptureTests
 import ContractAbiTests
 import DiagnosticCliTests
 import DiagnosticTests
@@ -27,7 +28,8 @@ tests :: TestTree
 tests =
   testGroup
     "Tests"
-    [ referenceSyntaxTests,
+    [ closureCaptureTests,
+      referenceSyntaxTests,
       newSyntaxTypeTests,
       newSyntaxExprTests,
       newSyntaxDeclTests,
