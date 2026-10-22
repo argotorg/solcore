@@ -2233,7 +2233,7 @@ instance Vars (Stmt Id) where
   free (For initStmt cond postStmt body) =
     free initStmt `union` ((free cond `union` free postStmt `union` free body) \\ bound initStmt)
   -- Assembly variables are constrained to word by tcYulExp/tcYulStmt.
-  free (Asm body) = [Id name word | name <- freeYulVariables body]
+  free (Asm body) = [Id variable word | variable <- freeYulVariables body]
   free Break = []
   free Continue = []
   free EmptyStmt = []

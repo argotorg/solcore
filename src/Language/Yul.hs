@@ -119,12 +119,15 @@ freeYulVariables = block []
     statement scope (YAssign names value) = (names \\ scope) `union` expression scope value
     statement scope (YIf condition body) = expression scope condition `union` block scope body
     statement scope (YSwitch value cases def) =
-      expression scope value `union` foldr union [] (map (block scope . snd) cases)
+      expression scope value
+        `union` foldr union [] (map (block scope . snd) cases)
         `union` maybe [] (block scope) def
     statement scope (YFor pre condition post body) =
       let inner = concatMap declared pre `union` scope
-       in block scope pre `union` expression inner condition
-            `union` block inner post `union` block inner body
+       in block scope pre
+            `union` expression inner condition
+            `union` block inner post
+            `union` block inner body
     statement scope (YExp value) = expression scope value
     statement _ _ = []
 
