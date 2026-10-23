@@ -2232,7 +2232,8 @@ instance Vars (Stmt Id) where
   free (If e blk1 blk2) = free e `union` free blk1 `union` free blk2
   free (For initStmt cond postStmt body) =
     free initStmt `union` ((free cond `union` free postStmt `union` free body) \\ bound initStmt)
-  free (Asm _) = []
+  -- Assembly variables are constrained to word by tcYulExp/tcYulStmt.
+  free (Asm body) = [Id variable word | variable <- freeYulVariables body]
   free Break = []
   free Continue = []
   free EmptyStmt = []
