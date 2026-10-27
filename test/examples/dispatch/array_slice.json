@@ -1,0 +1,87 @@
+{
+  "array_slice": {
+    "bytecode": "",
+    "contract": "ArraySlice",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "rangeLen() -> 3 (a[1:4].length())", "calldata": "9fcef669", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000003" }
+      },
+      {
+        "input": { "comment": "rangeGet(0) -> 11 (a[1:4][0])", "calldata": "f45869a90000000000000000000000000000000000000000000000000000000000000000", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000000b" }
+      },
+      {
+        "input": { "comment": "rangeGet(2) -> 13 (a[1:4][2])", "calldata": "f45869a90000000000000000000000000000000000000000000000000000000000000002", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000000d" }
+      },
+      {
+        "input": { "comment": "rangeGet(3) -> revert (index past slice length 3)", "calldata": "f45869a90000000000000000000000000000000000000000000000000000000000000003", "value": "0" },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "b4120f14" }
+      },
+      {
+        "input": { "comment": "fromLen() -> 3 (a[2:].length())", "calldata": "1b438489", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000003" }
+      },
+      {
+        "input": { "comment": "toLen() -> 3 (a[:3].length())", "calldata": "df4fa4db", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000003" }
+      },
+      {
+        "input": { "comment": "allLen() -> 5 (a[:].length())", "calldata": "0e6ad0f1", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "0000000000000000000000000000000000000000000000000000000000000005" }
+      },
+      {
+        "input": { "comment": "reslice(0) -> 12 (a[1:4][1:][0])", "calldata": "52420dd60000000000000000000000000000000000000000000000000000000000000000", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000000c" }
+      },
+      {
+        "input": { "comment": "reslice(1) -> 13 (a[1:4][1:][1])", "calldata": "52420dd60000000000000000000000000000000000000000000000000000000000000001", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000000d" }
+      },
+      {
+        "input": { "comment": "reslice(2) -> revert (index past re-slice length 2)", "calldata": "52420dd60000000000000000000000000000000000000000000000000000000000000002", "value": "0" },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "b4120f14" }
+      },
+      {
+        "input": { "comment": "badStartEnd() -> revert (start 4 > end 2)", "calldata": "90646b77", "value": "0" },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "b4120f14" }
+      },
+      {
+        "input": { "comment": "badEnd() -> revert (end 6 > length 5)", "calldata": "e10e94c5", "value": "0" },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "b4120f14" }
+      },
+      {
+        "input": { "comment": "materialise(0) -> 11 (toArray(a[1:4])[0])", "calldata": "a5018d450000000000000000000000000000000000000000000000000000000000000000", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000000b" }
+      },
+      {
+        "input": { "comment": "materialise(2) -> 13 (toArray(a[1:4])[2])", "calldata": "a5018d450000000000000000000000000000000000000000000000000000000000000002", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000000d" }
+      },
+      {
+        "input": { "comment": "materialise(3) -> revert (materialised length 3)", "calldata": "a5018d450000000000000000000000000000000000000000000000000000000000000003", "value": "0" },
+        "kind": "call",
+        "output": { "status": "failure", "returndata": "b4120f14" }
+      }
+    ]
+  }
+}

@@ -624,6 +624,11 @@ pprExpNode (ExpCond condition thenExpression elseExpression) =
 pprExpNode (ExpAt t) = char '@' <> ppr t
 pprExpNode (ExpBNot e) = char '~' <> pprExpPrec unaryExpPrec e
 pprExpNode (ExpArray elements) = brackets (commaSep (map ppr elements))
+pprExpNode (ExpSlice base mstart mend) =
+  pprExpPrec postfixExpPrec base
+    <> brackets (pprBound mstart <> colon <> pprBound mend)
+  where
+    pprBound = maybe mempty (pprExpPrec lowestExpPrec)
 
 pprLeftAssocBinary :: Int -> String -> Exp -> Exp -> Doc
 pprLeftAssocBinary precedence operator left right =
@@ -679,6 +684,7 @@ expPrecedence (ExpName (Just _) _ _) = postfixExpPrec
 expPrecedence (ExpApply _ _) = postfixExpPrec
 expPrecedence (ExpVar (Just _) _) = postfixExpPrec
 expPrecedence (ExpIndexed _ _) = postfixExpPrec
+expPrecedence (ExpSlice {}) = postfixExpPrec
 expPrecedence _ = atomExpPrec
 
 tupleExpElements :: Exp -> [Exp]

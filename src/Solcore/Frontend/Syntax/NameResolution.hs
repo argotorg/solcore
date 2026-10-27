@@ -1250,6 +1250,25 @@ resolveExp c@(S.ExpIndexed array idx) = do
   arr' <- resolve array `wrapError` c
   idx' <- resolve idx `wrapError` c
   pure $ Indexed arr' idx'
+-- Array slice base[start:end] lowers directly to a std slice helper, so no core
+-- Slice node is needed. Missing bounds pick the right helper (start defaults to
+-- 0, end to length(base)); the helpers fill the default inside std, so base is
+-- evaluated exactly once.
+resolveExp c@(S.ExpSlice base mstart mend) = do
+  base' <- resolve base `wrapError` c
+  case (mstart, mend) of
+    (Just s, Just e) -> do
+      s' <- resolve s `wrapError` c
+      e' <- resolve e `wrapError` c
+      pure $ Call Nothing (Name "sliceRange") [base', s', e']
+    (Just s, Nothing) -> do
+      s' <- resolve s `wrapError` c
+      pure $ Call Nothing (Name "sliceFrom") [base', s']
+    (Nothing, Just e) -> do
+      e' <- resolve e `wrapError` c
+      pure $ Call Nothing (Name "sliceTo") [base', e']
+    (Nothing, Nothing) ->
+      pure $ Call Nothing (Name "sliceAll") [base']
 resolveExp c@(S.ExpLT e1 e2) = do
   e1' <- resolve e1 `wrapError` c
   e2' <- resolve e2 `wrapError` c

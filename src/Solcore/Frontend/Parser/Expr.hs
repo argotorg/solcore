@@ -112,10 +112,25 @@ dotOp bp = do
     Just args -> \e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf n, sourceSpanOf args] (ExpName (Just e) n args)
     Nothing -> \e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf n] (ExpVar (Just e) n)
 
+-- Postfix [...] is either an index e[i] or an array slice e[start:end]
+-- (with either bound optional: e[:], e[a:], e[:b]). A : inside the
+-- brackets is what distinguishes a slice from an index; a ternary bound like
+-- e[a ? b : c :] still works, since the inner ternary consumes its own colon
+-- before the slice separator is reached.
 idxOp :: BodyP -> Parser (Exp -> Exp)
-idxOp bp = do
-  idx <- brackets (exprP bp)
-  return (\e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf idx] (ExpIndexed e idx))
+idxOp bp = brackets $ do
+  mStart <- optional (exprP bp)
+  hasColon <- option False (True <$ symbol ":")
+  if hasColon
+    then do
+      mEnd <- optional (exprP bp)
+      pure $ \e ->
+        locatedExpFrom [sourceSpanOf e, sourceSpanOf mStart, sourceSpanOf mEnd] (ExpSlice e mStart mEnd)
+    else case mStart of
+      Just idx ->
+        pure $ \e -> locatedExpFrom [sourceSpanOf e, sourceSpanOf idx] (ExpIndexed e idx)
+      Nothing ->
+        fail "expected an index expression or a slice `start:end` inside `[...]`"
 
 callOp :: BodyP -> Parser (Exp -> Exp)
 callOp bp = do
