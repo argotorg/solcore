@@ -8,6 +8,9 @@ cd "$root_dir"
 bash ./scripts/test_contest_concurrency.sh
 
 bash ./contest.sh test/examples/dispatch/basic.json
+bash ./contest.sh test/examples/dispatch/iface_selfcall.json
+bash ./contest.sh test/examples/dispatch/token_vault.json
+bash ./contest.sh test/examples/dispatch/token_vault_typed.json
 bash ./contest.sh test/examples/dispatch/assembly.json
 bash ./contest.sh test/examples/dispatch/asm_break_continue_leave.json
 bash ./contest.sh test/examples/dispatch/asm_subst.json

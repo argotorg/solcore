@@ -352,8 +352,16 @@ contractP = do
   keyword "contract"
   n <- simpleNameP
   params <- typeParamsP
+  impls <- option [] (keyword "implements" *> (simpleNameP `sepBy1` comma))
   ds <- braces (many contractDeclP)
-  pure (Contract n params ds)
+  pure (ContractWithImplements ContractKind n params impls ds)
+
+interfaceP :: Parser Contract
+interfaceP = do
+  keyword "interface"
+  n <- simpleNameP
+  ds <- braces (many (CSignatureDecl True <$> traitSignatureP))
+  pure (ContractShell InterfaceKind n [] ds)
 
 contractDeclP :: Parser ContractDecl
 contractDeclP =
@@ -390,6 +398,7 @@ topDeclP =
       TDataDef <$> dataDeclP,
       TSym <$> tySymP,
       TContr <$> contractP,
+      TContr <$> interfaceP,
       contractOnlyDeclP,
       TFunDef <$> funDefP,
       TClassDef <$> traitP,

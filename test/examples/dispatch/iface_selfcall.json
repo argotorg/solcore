@@ -1,0 +1,22 @@
+{
+  "iface_selfcall": {
+    "bytecode": "",
+    "contract": "C",
+    "tests": [
+      {
+        "input": { "comment": "constructor()", "calldata": "", "value": "0" },
+        "kind": "constructor"
+      },
+      {
+        "input": { "comment": "double(21) -> 42 (direct)", "calldata": "eee972060000000000000000000000000000000000000000000000000000000000000015", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000002a" }
+      },
+      {
+        "input": { "comment": "callDouble(21) -> 42 (typed external self-call Doubler(self()).double(21))", "calldata": "706bb2650000000000000000000000000000000000000000000000000000000000000015", "value": "0" },
+        "kind": "call",
+        "output": { "status": "success", "returndata": "000000000000000000000000000000000000000000000000000000000000002a" }
+      }
+    ]
+  }
+}

@@ -22,6 +22,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Solcore.Desugarer.InterfaceDesugar (desugarInterfaces)
 import Solcore.Diagnostics (Diagnostic (..), DiagnosticCode (..), Label (..), LabelStyle (..), Severity (..), SourceFile, SourceMap, SourceSpan, combineSourceSpans, encodeDiagnostic, makeSourceFile, sourceMapFromFiles)
 import Solcore.Frontend.Module.Identity qualified as Mod
 import Solcore.Frontend.Parser.SolcoreParser (parseCompUnitWithPath)
@@ -145,7 +146,7 @@ visit cfg moduleId sourcePath = do
     content <- liftIO (readFile sourcePath)
     let source = makeSourceFile sourcePath content
     parsed <- liftIO (parseCompUnitWithPath sourcePath content)
-    cunit <- either throwError pure parsed
+    cunit <- either throwError pure parsed >>= either throwError pure . desugarInterfaces
     importedModules <- mapM (resolveImportPath cfg moduleId sourcePath) (imports cunit)
     arrayRuntimeModules <-
       if usesArrayLiterals cunit && moduleId /= arrayRuntimeModuleId
