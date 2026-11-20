@@ -348,7 +348,15 @@ class TypeParser:
                 if close is None:
                     return None
                 size = "".join(t.text for t in self.tokens[i + 1:close])
-                rendered = f"array<{size}, {rendered}>" if size else f"array<{rendered}>"
+                # A bare `T[]` (dynamic, no location suffix) is canonical new
+                # syntax for a memory dynamic array (parser desugars it to
+                # `memory<DynArray<T>>`), so leave it unchanged / idempotent.
+                # Fixed-size `T[k]` and location-qualified `T[] memory` keep the
+                # historical `array<...>` migration.
+                if not size and self.at(close + 1) not in {"memory", "storage", "calldata"}:
+                    rendered = f"{rendered}[]"
+                else:
+                    rendered = f"array<{size}, {rendered}>" if size else f"array<{rendered}>"
                 i = close + 1
             else:
                 break

@@ -5,6 +5,7 @@ module Solcore.Frontend.Parser.SolcoreParser
   )
 where
 
+import Data.Foldable (toList)
 import Data.List (find, isPrefixOf)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Void (Void)
@@ -20,6 +21,7 @@ import Solcore.Diagnostics
 import Solcore.Frontend.Parser.Decl (compUnitP)
 import Solcore.Frontend.Syntax.SyntaxTree (CompUnit)
 import Text.Megaparsec (ParseErrorBundle, bundleErrors, errorBundlePretty, errorOffset, parse)
+import Text.Megaparsec.Error (ErrorFancy (..), ParseError (..))
 
 parseCompUnit :: String -> IO (Either String CompUnit)
 parseCompUnit = parseCompUnitWithPath "<input>"
@@ -41,17 +43,36 @@ parseDiagnostic sourcePath src err =
     Diagnostic
       { diagnosticSeverity = Error,
         diagnosticCode = Just (DiagnosticCode "SC0001"),
-        diagnosticMessage = parseDiagnosticMessage err,
+        -- A `fail "..."` in the grammar carries a specific explanation (e.g.
+        -- newP rejecting `new T[][](n)`). Megaparsec keeps it as an ErrorFail,
+        -- which neither the "unexpected"/"expecting" lines capture, so surface it
+        -- directly as the headline when present and point the label at it.
+        diagnosticMessage =
+          case parseFailMessages err of
+            (msg : _) -> msg
+            [] -> parseDiagnosticMessage err,
         diagnosticLabels =
           [ Label
               { labelSpan = parseErrorSpan sourcePath src err,
                 labelStyle = Primary,
-                labelMessage = Just "unexpected token"
+                labelMessage =
+                  case parseFailMessages err of
+                    (_ : _) -> Just "not allowed here"
+                    [] -> Just "unexpected token"
               }
           ],
         diagnosticNotes = parseDiagnosticNotes err,
         diagnosticHelp = []
       }
+
+-- Explanations attached by `fail` in the grammar (megaparsec ErrorFail), pulled
+-- straight out of the error bundle rather than string-matching the pretty output.
+parseFailMessages :: ParseErrorBundle String Void -> [String]
+parseFailMessages err =
+  [ msg
+  | FancyError _ fancies <- NonEmpty.toList (bundleErrors err),
+    ErrorFail msg <- toList fancies
+  ]
 
 parseDiagnosticMessage :: ParseErrorBundle String Void -> String
 parseDiagnosticMessage err =

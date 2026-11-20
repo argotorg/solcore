@@ -54,10 +54,16 @@ locatedIdentifierP = do
   pure (sourceSpanBetween startOffset startPos endOffset endPos, identifierText)
 
 typeP :: Parser Ty
-typeP =
-  locatedP
-    locatedTy
-    (functionTypeP <|> try comptimeTypeP <|> mappingTypeP <|> proxyTypeP <|> parenTypeP <|> namedTypeP)
+typeP = do
+  base <-
+    locatedP
+      locatedTy
+      (functionTypeP <|> try comptimeTypeP <|> mappingTypeP <|> proxyTypeP <|> parenTypeP <|> namedTypeP)
+  -- Solidity-style dynamic array suffix: T[] desugars to memory<DynArray<T>>
+  -- (nestable: T[][]). Only the empty [] form is accepted; fixed-size T[k]
+  -- is not supported, so try leaves a [k] for the surrounding parser.
+  suffixes <- many (try (symbol "[" *> symbol "]"))
+  pure (foldl (\acc _ -> TyCon (Name "memory") [TyCon (Name "DynArray") [acc]]) base suffixes)
 
 atomTypeP :: Parser Ty
 atomTypeP = typeP
