@@ -154,6 +154,7 @@ dispatches =
       runDispatchTest "abi_address_array.sol",
       runDispatchTest "abi_encode_types.sol",
       runDispatchTest "abi_encode_adt.sol",
+      runDispatchTest "abi_tuple_offset.sol",
       runDispatchTest "specialise_sum_of_product.sol",
       runDispatchTest "storage_adt_field.sol",
       runDispatchTest "storage_adt_enum.sol",
