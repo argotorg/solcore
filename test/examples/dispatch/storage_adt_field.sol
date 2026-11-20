@@ -14,9 +14,13 @@ enum Option<a> { None, Some(a) }
 enum Triple { Triple(uint256, uint256, uint256) }
 
 contract C {
-    someValue : Option<uint256>;
-    triple : Triple;
-    someTriple : Option<Triple>;
+    // ADT-typed fields are non-primitive, so each is given an explicit initial
+    // value (SC0233).  These match what an untouched storage slot reads back
+    // (tag 0 = None; an all-zero Triple), so the observable behaviour is the
+    // same as the previous implicit zero-initialisation.
+    someValue : Option<uint256> = Option.None;
+    triple : Triple = Triple(uint256(0), uint256(0), uint256(0));
+    someTriple : Option<Triple> = Option.None;
 
     constructor() {
         // sum:            1 tag + max(size (), size uint256) = 1 + 1 = 2

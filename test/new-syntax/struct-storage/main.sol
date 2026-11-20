@@ -8,7 +8,7 @@ contract StructStorageUpdates {
     x: uint256;
     y: uint256;
   }
-  p: Point;
+  p: Point = Point(0, 0);
   xs: array<uint256>;
   ticks: uint256;
 
