@@ -129,7 +129,19 @@ callOp bp = do
         _ -> ExpApply callee args
 
 atomP :: BodyP -> Parser Exp
-atomP bp = litP <|> lamP bp <|> dotNameP bp <|> proxyP <|> arrayP bp <|> parenP bp <|> nameP bp
+atomP bp = litP <|> try typeInfoP <|> lamP bp <|> dotNameP bp <|> proxyP <|> arrayP bp <|> parenP bp <|> nameP bp
+
+-- | Parse the `type(C).field` primitive, e.g. `type(Token).publicMethods`.
+-- The contract name and field are kept as raw names and interpreted during
+-- name resolution / desugaring.
+typeInfoP :: Parser Exp
+typeInfoP = do
+  keyword "type"
+  cn <- parens identifier
+  _ <- char '.'
+  sc
+  field <- identifier
+  return (ExpTypeInfo (Name cn) (Name field))
 
 litP :: Parser Exp
 litP =

@@ -77,6 +77,7 @@ library
       Solcore.Desugarer.StrLiteralDesugar
       Solcore.Desugarer.ReplaceWildcard
       Solcore.Desugarer.ContractDispatch
+      Solcore.Desugarer.PublicMethods
       Solcore.Desugarer.ReplaceFunTypeArgs
       Solcore.Desugarer.UniqueTypeGen
       Solcore.Diagnostics

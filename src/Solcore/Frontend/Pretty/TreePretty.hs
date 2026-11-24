@@ -622,6 +622,8 @@ pprExpNode (ExpCond condition thenExpression elseExpression) =
       pprExpPrec ternaryExpPrec elseExpression
     ]
 pprExpNode (ExpAt t) = char '@' <> ppr t
+pprExpNode (ExpTypeInfo cn field) =
+  text "type" <> parens (ppr cn) <> char '.' <> ppr field
 pprExpNode (ExpBNot e) = char '~' <> pprExpPrec unaryExpPrec e
 pprExpNode (ExpArray elements) = brackets (commaSep (map ppr elements))
 

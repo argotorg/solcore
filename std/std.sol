@@ -857,6 +857,12 @@ impl Typedef<bytes4, word> {
     }
 }
 
+impl Int<bytes4> {
+    function fromInteger(x : integer) returns (bytes4) {
+        return bytes4(wordFromInteger(x));
+    }
+}
+
 // --- Bytes32 ---
 
 enum bytes32 { bytes32(word) }
